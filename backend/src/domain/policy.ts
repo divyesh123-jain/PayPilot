@@ -16,6 +16,7 @@ export interface PolicyRule {
   readonly action: PolicyAction;
   readonly effect: PolicyEffect;
   readonly maxAmountCents?: number;
+  readonly minAmountCents?: number;
   readonly requiresApprovalAboveCents?: number;
   readonly roles?: readonly string[];
   readonly description?: string;
@@ -51,7 +52,7 @@ const ACTION_WORDS: ReadonlyArray<readonly [PolicyAction, RegExp]> = [
   ["issue_refund", /refunds?|refund/i],
   ["send_reminder", /reminders?|collection|dunning/i],
   ["schedule_payment", /schedule(?:d)? payments?|scheduled payments?/i],
-  ["execute_payment", /(?:execute|make|send) payments?/i],
+  ["execute_payment", /\bpayments?\b/i],
   ["create_workflow", /workflows?|automations?/i],
   ["export_data", /exports?|download/i],
   ["read_transactions", /transactions?|payments?\s+data/i],
@@ -91,9 +92,12 @@ export function parsePolicyText(text: string, id = "draft-policy"): ParsedPolicy
   // "Require approval above $X" is represented as an allow rule with a
   // threshold; an unconditional require_approval rule remains available for
   // text such as "all refunds require approval".
-  const effect = threshold !== undefined && /\b(?:approval|approve|review)\b/i.test(normalized)
+  const approvalLanguage = /\b(?:approval|approve|review)\b/i.test(normalized);
+  const approvalThreshold = threshold !== undefined && approvalLanguage ? threshold : undefined;
+  const effect = threshold !== undefined && approvalLanguage
     ? "allow"
     : inferEffect(normalized);
+  const minimumAmount = threshold !== undefined && !approvalLanguage ? threshold : undefined;
   const maxAmountCents = /\b(?:under|below|up to|less than)\b/i.test(normalized)
     ? amountCents
     : undefined;
@@ -111,7 +115,8 @@ export function parsePolicyText(text: string, id = "draft-policy"): ParsedPolicy
       action,
       effect,
       ...(maxAmountCents === undefined ? {} : { maxAmountCents }),
-      ...(threshold === undefined ? {} : { requiresApprovalAboveCents: threshold }),
+      ...(minimumAmount === undefined ? {} : { minAmountCents: minimumAmount }),
+      ...(approvalThreshold === undefined ? {} : { requiresApprovalAboveCents: approvalThreshold }),
       description: normalized,
     },
     confidence: amountCents === undefined ? "medium" : "high",
@@ -123,6 +128,7 @@ function matchesRule(rule: PolicyRule, input: PolicyEvaluationInput): boolean {
   if (rule.action !== input.action) return false;
   if (rule.roles && !rule.roles.some((role) => input.subject.roles?.includes(role))) return false;
   if (rule.maxAmountCents !== undefined && (input.amountCents ?? 0) > rule.maxAmountCents) return false;
+  if (rule.minAmountCents !== undefined && (input.amountCents === undefined || input.amountCents <= rule.minAmountCents)) return false;
   return true;
 }
 
