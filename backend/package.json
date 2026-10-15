@@ -1,0 +1,20 @@
+{
+  "name": "paypilot-domain",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PayPilot's deterministic backend domain layer",
+  "type": "module",
+  "engines": {
+    "node": ">=20.17.0 <21"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test dist/domain/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
