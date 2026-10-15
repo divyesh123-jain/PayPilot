@@ -84,11 +84,16 @@ export function parsePolicyText(text: string, id = "draft-policy"): ParsedPolicy
     throw new Error("Could not identify a supported policy action");
   }
 
-  const effect = inferEffect(normalized);
   const amountCents = parseAmountCents(normalized);
   const threshold = /\b(?:above|over|exceed(?:ing)?|greater than)\b/i.test(normalized)
     ? amountCents
     : undefined;
+  // "Require approval above $X" is represented as an allow rule with a
+  // threshold; an unconditional require_approval rule remains available for
+  // text such as "all refunds require approval".
+  const effect = threshold !== undefined && /\b(?:approval|approve|review)\b/i.test(normalized)
+    ? "allow"
+    : inferEffect(normalized);
   const maxAmountCents = /\b(?:under|below|up to|less than)\b/i.test(normalized)
     ? amountCents
     : undefined;
