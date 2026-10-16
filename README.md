@@ -14,7 +14,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Backend domain layer
 
-The backend currently stops at the domain boundary: it has no HTTP server, payment integrations, or external API calls. The package provides typed, deterministic business context, policy parsing/enforcement, append-only audit events, cash-flow forecasting, anomaly detection, collection strategy, and Scout/Strategist/Executor contracts with a dry-run orchestrator.
+The backend has no HTTP server or domain orchestration entry point. It provides typed, deterministic business context, policy parsing/enforcement, append-only audit events, cash-flow forecasting, anomaly detection, collection strategy, Scout/Strategist/Executor contracts with a dry-run orchestrator, and an isolated integration layer.
 
 ```bash
 cd backend
@@ -22,6 +22,8 @@ npm ci
 npm start       # domain smoke entry point
 npm test        # build plus the focused unit tests
 ```
+
+The integration layer is exported from `backend/src/integrations/`. It contains PayPal sandbox OAuth, orders, captures, refunds, invoices, transaction reporting, and webhook verification adapters, plus environment-selected NVIDIA NeMo and Gemini model clients. External requests are disabled when credentials are absent and raise typed configuration errors. Copy `backend/.env.example` to `backend/.env` for local configuration; mock mode is deterministic and does not make network requests. The integration tests use injected fetch implementations and never need credentials.
 
 The PostgreSQL DDL is in `backend/src/db/schema.sql`. It creates tables for business profiles, transactions, policies, workflows, audit logs, notifications, and approval requests. IDs are supplied by the application so the schema does not require PostgreSQL extensions.
 
