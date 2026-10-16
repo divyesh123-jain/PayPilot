@@ -14,12 +14,12 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Backend domain layer
 
-The backend has no HTTP server or domain orchestration entry point. It provides typed, deterministic business context, policy parsing/enforcement, append-only audit events, cash-flow forecasting, anomaly detection, collection strategy, Scout/Strategist/Executor contracts with a dry-run orchestrator, and an isolated integration layer.
+The backend provides a dependency-light Node HTTP API on top of typed, deterministic business context, policy parsing/enforcement, append-only audit events, cash-flow forecasting, anomaly detection, collection strategy, Scout/Strategist/Executor contracts, payment adapters, and an isolated integration layer.
 
 ```bash
 cd backend
 npm ci
-npm start       # domain smoke entry point
+npm start       # API on http://localhost:8080 (set PORT to change it)
 npm test        # build plus the focused unit tests
 ```
 
