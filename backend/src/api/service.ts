@@ -6,7 +6,7 @@ import {
   type AuditEvent,
 } from "../domain/audit-events.js";
 import { forecastCashFlow } from "../domain/cash-flow.js";
-import { createBusinessContext, type BusinessContext, type Transaction } from "../domain/business-context.js";
+import { createBusinessContext, type BusinessContext, type BusinessType, type Transaction } from "../domain/business-context.js";
 import {
   evaluatePolicy,
   parsePolicyText,
@@ -55,6 +55,13 @@ export class PayPilotService {
   public get paymentMode(): PaymentMode { return this.adapter.mode; }
   public get businessContext(): BusinessContext { return this.context; }
   public get currentPolicy(): PolicySet { return this.policy; }
+
+  public setBusinessType(type: BusinessType): SessionResponse {
+    this.context = createBusinessContext({ ...this.context.profile, type }, this.context.transactions, this.context.asOf);
+    this.appendAudit("business.type_changed", "accepted", "business", this.context.profile.id, { businessType: type });
+    this.emit("session.updated", this.session());
+    return this.session();
+  }
 
   public async refreshTransactions(): Promise<readonly Transaction[]> {
     const inputs = await this.adapter.listTransactions();

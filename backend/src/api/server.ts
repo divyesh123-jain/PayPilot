@@ -63,6 +63,16 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
         : body;
       return sendJson(response, 200, service.ingestWebhook(event, header(request, "idempotency-key")));
     }
+    if (url.pathname === "/api/session") {
+      if (body.businessType !== undefined) {
+        const supported = ["freelancer", "ecommerce", "saas", "agency", "service", "creator"] as const;
+        if (typeof body.businessType !== "string" || !supported.includes(body.businessType as (typeof supported)[number])) {
+          throw new Error("businessType must be one of freelancer, ecommerce, saas, agency, service, or creator");
+        }
+        return sendJson(response, 200, service.setBusinessType(body.businessType as (typeof supported)[number]));
+      }
+      return sendJson(response, 200, service.session());
+    }
     const proposalMatch = url.pathname.match(/^\/api\/proposals\/([^/]+)\/(approve|reject|execute)$/);
     if (proposalMatch?.[1] && proposalMatch[2]) {
       const proposalId = decodeURIComponent(proposalMatch[1]);

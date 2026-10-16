@@ -10,10 +10,12 @@ export function Topbar({
   activeView,
   alertsOpen,
   onAlertsToggle,
+  syncLabel = "Synced just now",
 }: {
   activeView: ViewKey;
   alertsOpen: boolean;
   onAlertsToggle: () => void;
+  syncLabel?: string;
 }) {
   const title = navItems.find((item) => item.key === activeView)?.label ?? "Overview";
   return (
@@ -39,7 +41,7 @@ export function Topbar({
         <CircleHelp className="help-button" size={19} />
         <div className="topbar-divider" />
         <span className="sync-text">
-          <span className="sync-dot" /> Synced just now
+          <span className="sync-dot" /> {syncLabel}
         </span>
       </div>
     </header>

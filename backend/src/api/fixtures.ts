@@ -85,6 +85,12 @@ export const SEED_POLICY: PolicySet = {
       effect: "allow",
       description: "Workflow creation is allowed for operators.",
     },
+    {
+      id: "reminders-require-review",
+      action: "send_reminder",
+      effect: "require_approval",
+      description: "Outbound payment reminders require an operator review.",
+    },
   ],
 };
 

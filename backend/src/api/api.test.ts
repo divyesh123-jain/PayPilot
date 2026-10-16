@@ -72,6 +72,23 @@ test("core JSON routes return seeded session and proposal lifecycle", async (t) 
   assert.equal(replay.body.replayed, true);
 });
 
+test("session business switch is typed and reminder proposals require approval", async (t) => {
+  const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
+  const server = createApiServer({ service }).listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const switched = await request(base, "/api/session", { businessType: "freelancer" });
+  assert.equal(switched.status, 200);
+  assert.equal(switched.body.business.type, "freelancer");
+  const simulation = await request(base, "/api/simulate", { action: "send_reminder", rationale: "Review overdue invoice" });
+  assert.equal(simulation.status, 200);
+  assert.equal((simulation.body.proposal as { policyDecision: { requiresApproval: boolean } }).policyDecision.requiresApproval, true);
+});
+
 async function request(base: string, path: string, body?: Record<string, unknown>, headers: Record<string, string> = {}): Promise<{ status: number; body: Record<string, any> }> {
   const response = await fetch(`${base}${path}`, {
     method: body === undefined ? "GET" : "POST",
