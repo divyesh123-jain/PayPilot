@@ -626,7 +626,8 @@ export const whatIfScenarios: Record<BusinessKey, WhatIfScenario> = {
     waitDays: 7,
     waitProbability: 0.6,
     waitOutcome: 1320,
-    recommendation: "A modest incentive improves certainty without moving outside your margin guardrail.",
+    recommendation:
+      "A modest incentive improves certainty without moving outside your margin guardrail.",
   },
   ecommerce: {
     title: "Hold a reserve for restock",
@@ -659,7 +660,8 @@ export const whatIfScenarios: Record<BusinessKey, WhatIfScenario> = {
     waitDays: 5,
     waitProbability: 0.61,
     waitOutcome: 9150,
-    recommendation: "Sending the draft today raises the chance of covering Friday’s contractor run.",
+    recommendation:
+      "Sending the draft today raises the chance of covering Friday’s contractor run.",
   },
   service: {
     title: "Offer a same-day payment link",
@@ -670,7 +672,8 @@ export const whatIfScenarios: Record<BusinessKey, WhatIfScenario> = {
     waitDays: 10,
     waitProbability: 0.48,
     waitOutcome: 2976,
-    recommendation: "A fast payment option is more likely to restore the winter buffer than waiting.",
+    recommendation:
+      "A fast payment option is more likely to restore the winter buffer than waiting.",
   },
   creator: {
     title: "Test a win-back credit",
@@ -681,7 +684,8 @@ export const whatIfScenarios: Record<BusinessKey, WhatIfScenario> = {
     waitDays: 14,
     waitProbability: 0.41,
     waitOutcome: 318,
-    recommendation: "Keep the offer narrow: the returning cohort is more valuable than a broad discount.",
+    recommendation:
+      "Keep the offer narrow: the returning cohort is more valuable than a broad discount.",
   },
 };
 

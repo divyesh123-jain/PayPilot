@@ -1,17 +1,188 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, Ban, CheckCircle2, LockKeyhole, ShieldAlert } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Ban,
+  CheckCircle2,
+  LockKeyhole,
+  ShieldAlert,
+} from "lucide-react";
 import { Button } from "@/frontend/components/ui/button";
 import { Card } from "@/frontend/components/ui/card";
+import type { ApiFinding } from "@/frontend/lib/api";
 import type { BusinessProfile } from "../types";
 
-export function RiskView({ business, onPolicies }: { business: BusinessProfile; onPolicies: () => void }) {
-  return <div className="view-content"><div className="page-heading"><div><span className="eyebrow">SCOUT · EXCEPTIONS & SIGNALS</span><h1>Risk</h1><p>See what could interrupt cash flow, with the policy context beside it.</p></div><Button variant="secondary" onClick={onPolicies}><LockKeyhole size={15} /> Review guardrails</Button></div>
-    <div className="risk-overview"><div className="risk-score panel"><span className="eyebrow">RISK POSTURE</span><strong>Low · 18</strong><div className="risk-meter"><span /></div><p>PayPilot is watching 12 accounts and has blocked 1 unsafe action.</p></div><div className="risk-stat panel"><span className="eyebrow">EXPOSURE</span><strong>{business.outstanding}</strong><small>in open or delayed payments</small><span className="risk-change"><ArrowRight size={13} /> 3 items need review</span></div><div className="risk-stat panel"><span className="eyebrow">PROTECTED</span><strong>100%</strong><small>policy checks enforced</small><span className="risk-change good"><CheckCircle2 size={13} /> no unauthorized calls</span></div></div>
-    <div className="risk-layout"><section className="panel risk-list"><div className="panel-header"><div><span className="eyebrow">ACTIVE SIGNALS</span><h2>Risk queue</h2></div><span className="policy-count">3 signals</span></div><RiskRow tone="red" icon={<AlertTriangle size={16} />} title={business.alert.title} detail={business.alert.detail} label="Needs review" /><RiskRow tone="amber" icon={<ShieldAlert size={16} />} title="Reminder #3 blocked" detail="Two reminders already sent this week. Executor paused before the external call." label="Policy blocked" blocked /><RiskRow tone="teal" icon={<CheckCircle2 size={16} />} title="No unusual login or payout activity" detail="Scout found no new destination accounts or velocity anomalies." label="Clear" /></section><Card className="risk-policy-card"><div className="panel-header"><div><span className="eyebrow">POLICY CHECK</span><h2>Permission boundary</h2></div><LockKeyhole size={15} /></div><p>Every draft is checked against limits before it appears in your approval queue.</p><div className="policy-check-row"><span className="policy-check-icon"><CheckCircle2 size={14} /></span><span><strong>Send reminders</strong><small>2 / 2 used this week</small></span><b>Protected</b></div><div className="policy-check-row blocked"><span className="policy-check-icon"><Ban size={14} /></span><span><strong>Third reminder</strong><small>Would exceed client limit</small></span><b>Blocked</b></div><Button variant="secondary" className="full-button" onClick={onPolicies}>Edit policies <ArrowRight size={14} /></Button></Card></div>
-  </div>;
+export function RiskView({
+  business,
+  findings,
+  loading,
+  error,
+  onPolicies,
+}: {
+  business: BusinessProfile;
+  findings: ApiFinding[] | null;
+  loading: boolean;
+  error: string | null;
+  onPolicies: () => void;
+}) {
+  const liveSignals = findings ?? [];
+  const criticalCount = liveSignals.filter((finding) => finding.severity === "critical").length;
+  return (
+    <div className="view-content">
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">SCOUT · EXCEPTIONS & SIGNALS</span>
+          <h1>Risk</h1>
+          <p>See what could interrupt cash flow, with the policy context beside it.</p>
+        </div>
+        <Button variant="secondary" onClick={onPolicies}>
+          <LockKeyhole size={15} /> Review guardrails
+        </Button>
+      </div>
+      <div className="risk-overview">
+        <div className="risk-score panel">
+          <span className="eyebrow">RISK POSTURE</span>
+           <strong>{criticalCount > 0 ? "Elevated" : "Low"} · {criticalCount > 0 ? "42" : "18"}</strong>
+          <div className="risk-meter">
+            <span />
+          </div>
+          <p>PayPilot is watching 12 accounts and has blocked 1 unsafe action.</p>
+        </div>
+        <div className="risk-stat panel">
+          <span className="eyebrow">EXPOSURE</span>
+          <strong>{business.outstanding}</strong>
+          <small>in open or delayed payments</small>
+          <span className="risk-change">
+            <ArrowRight size={13} /> 3 items need review
+          </span>
+        </div>
+        <div className="risk-stat panel">
+          <span className="eyebrow">PROTECTED</span>
+          <strong>100%</strong>
+          <small>policy checks enforced</small>
+          <span className="risk-change good">
+            <CheckCircle2 size={13} /> no unauthorized calls
+          </span>
+        </div>
+      </div>
+      <div className="risk-layout">
+        <section className="panel risk-list">
+          <div className="panel-header">
+            <div>
+              <span className="eyebrow">ACTIVE SIGNALS</span>
+              <h2>Risk queue</h2>
+            </div>
+             <span className="policy-count">{liveSignals.length || 3} signals</span>
+           </div>
+           {loading && <div className="data-status loading-status">Refreshing anomaly signals…</div>}
+           {error && <div className="data-status error-status">Live findings unavailable. Showing the latest local signal summary.</div>}
+           {liveSignals.length > 0 && (
+             <div className="risk-live-findings">
+               {liveSignals.map((finding) => (
+                 <RiskRow
+                   key={finding.id}
+                   tone={finding.severity === "critical" ? "red" : finding.severity === "warning" ? "amber" : "teal"}
+                   icon={finding.severity === "critical" ? <AlertTriangle size={16} /> : <ShieldAlert size={16} />}
+                   title={finding.summary}
+                   detail={`Transaction ${finding.transactionId} · anomaly score ${Math.round(finding.score * 100)}%`}
+                   label={finding.severity === "critical" ? "Critical" : finding.severity === "warning" ? "Review" : "Info"}
+                   blocked={finding.severity === "critical"}
+                 />
+               ))}
+             </div>
+           )}
+           <RiskRow
+            tone="red"
+            icon={<AlertTriangle size={16} />}
+            title={business.alert.title}
+            detail={business.alert.detail}
+            label="Needs review"
+          />
+          <RiskRow
+            tone="amber"
+            icon={<ShieldAlert size={16} />}
+            title="Reminder #3 blocked"
+            detail="Two reminders already sent this week. Executor paused before the external call."
+            label="Policy blocked"
+            blocked
+          />
+          <RiskRow
+            tone="teal"
+            icon={<CheckCircle2 size={16} />}
+            title="No unusual login or payout activity"
+            detail="Scout found no new destination accounts or velocity anomalies."
+            label="Clear"
+          />
+        </section>
+        <Card className="risk-policy-card">
+          <div className="panel-header">
+            <div>
+              <span className="eyebrow">POLICY CHECK</span>
+              <h2>Permission boundary</h2>
+            </div>
+            <LockKeyhole size={15} />
+          </div>
+          <p>Every draft is checked against limits before it appears in your approval queue.</p>
+          <div className="policy-check-row">
+            <span className="policy-check-icon">
+              <CheckCircle2 size={14} />
+            </span>
+            <span>
+              <strong>Send reminders</strong>
+              <small>2 / 2 used this week</small>
+            </span>
+            <b>Protected</b>
+          </div>
+          <div className="policy-check-row blocked">
+            <span className="policy-check-icon">
+              <Ban size={14} />
+            </span>
+            <span>
+              <strong>Third reminder</strong>
+              <small>Would exceed client limit</small>
+            </span>
+            <b>Blocked</b>
+          </div>
+          <Button variant="secondary" className="full-button" onClick={onPolicies}>
+            Edit policies <ArrowRight size={14} />
+          </Button>
+        </Card>
+      </div>
+    </div>
+  );
 }
 
-function RiskRow({ icon, title, detail, label, tone, blocked }: { icon: React.ReactNode; title: string; detail: string; label: string; tone: string; blocked?: boolean }) {
-  return <div className="risk-row"><span className={`risk-icon ${tone}`}>{icon}</span><div><div className="risk-row-title"><strong>{title}</strong><span className={`risk-label ${tone}`}>{label}</span></div><p>{detail}</p>{blocked && <small><Ban size={11} /> No external call made</small>}</div></div>;
+function RiskRow({
+  icon,
+  title,
+  detail,
+  label,
+  tone,
+  blocked,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  detail: string;
+  label: string;
+  tone: string;
+  blocked?: boolean;
+}) {
+  return (
+    <div className="risk-row">
+      <span className={`risk-icon ${tone}`}>{icon}</span>
+      <div>
+        <div className="risk-row-title">
+          <strong>{title}</strong>
+          <span className={`risk-label ${tone}`}>{label}</span>
+        </div>
+        <p>{detail}</p>
+        {blocked && (
+          <small>
+            <Ban size={11} /> No external call made
+          </small>
+        )}
+      </div>
+    </div>
+  );
 }

@@ -92,7 +92,7 @@ export function OverviewView({
       >
         <AlertBanner
           data={business.alert}
-            onAction={() => onNavigate(business.alert.tone === "red" ? "ask" : "workflows")}
+          onAction={() => onNavigate(business.alert.tone === "red" ? "ask" : "workflows")}
         />
       </motion.div>
       <motion.div
@@ -155,12 +155,12 @@ export function OverviewView({
               <PriorityCard
                 priority={priority}
                 accent={business.accent}
-                 onOpen={() => onNavigate("ask")}
+                onOpen={() => onNavigate("ask")}
               />
             </motion.div>
           ))}
           <Dialog>
-               <DialogTrigger asChild>
+            <DialogTrigger asChild>
               <WhatIfCard onOpen={() => undefined} />
             </DialogTrigger>
             <DialogContent>
@@ -173,10 +173,10 @@ export function OverviewView({
               <p className="modal-intro">
                 Compare the expected value of a fast, certain payment vs. waiting on a late invoice.
               </p>
-               <div className="scenario-box">
+              <div className="scenario-box">
                 <div className="scenario-top">
                   <span>Priya Sharma · outstanding invoice</span>
-                 <strong>{formatCurrency(whatIf.outstanding)}</strong>
+                  <strong>{formatCurrency(whatIf.outstanding)}</strong>
                 </div>
                 <label htmlFor="discount">
                   Discount offered <b>{discount}%</b>
@@ -199,14 +199,14 @@ export function OverviewView({
               <div className="compare-grid">
                 <div>
                   <span>Fast payment</span>
-                   <strong>{formatCurrency(simulated)}</strong>
+                  <strong>{formatCurrency(simulated)}</strong>
                   <small>certain · today</small>
                 </div>
                 <div className="vs">vs.</div>
                 <div>
                   <span>Wait 7 more days</span>
-                   <strong>{formatCurrency(whatIf.waitOutcome)}</strong>
-                   <small>{Math.round(whatIf.waitProbability * 100)}% probability</small>
+                  <strong>{formatCurrency(whatIf.waitOutcome)}</strong>
+                  <small>{Math.round(whatIf.waitProbability * 100)}% probability</small>
                 </div>
               </div>
               <div className="recommendation">
@@ -215,12 +215,13 @@ export function OverviewView({
                 </span>
                 <p>
                   <strong>Strategist recommends the discount.</strong> It gives you a{" "}
-                   {formatCurrency(simulated)} certain outcome vs. {formatCurrency(whatIf.waitOutcome)} expected value if you wait.
+                  {formatCurrency(simulated)} certain outcome vs.{" "}
+                  {formatCurrency(whatIf.waitOutcome)} expected value if you wait.
                 </p>
               </div>
               <div className="modal-actions">
                 <Button variant="secondary">Keep exploring</Button>
-                 <Button onClick={() => onNavigate("ask")}>
+                <Button onClick={() => onNavigate("ask")}>
                   Draft offer <ArrowRight size={15} />
                 </Button>
               </div>
@@ -231,7 +232,6 @@ export function OverviewView({
     </div>
   );
 }
-
 
 function SparkleIcon() {
   return <span aria-hidden="true">✦</span>;

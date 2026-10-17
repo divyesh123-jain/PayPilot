@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   Lock,
@@ -16,13 +16,133 @@ import { Button } from "@/frontend/components/ui/button";
 import { Card } from "@/frontend/components/ui/card";
 import { Switch } from "@/frontend/components/ui/switch";
 import { Textarea } from "@/frontend/components/ui/textarea";
+import {
+  parsePolicy,
+  savePolicy as savePolicyRequest,
+  savePolicyText,
+  type ApiPolicy,
+  type ApiPolicyRule,
+  type ParsedPolicy,
+} from "@/frontend/lib/api";
 
-export function PoliciesView() {
+const policyActions = {
+  reminders: "send_reminder",
+  refunds: "issue_refund",
+  spending: "execute_payment",
+} as const;
+
+export function PoliciesView({
+  policy,
+  loading,
+  error,
+  onPolicySaved,
+}: {
+  policy: ApiPolicy | null;
+  loading: boolean;
+  error: string | null;
+  onPolicySaved: (policy: ApiPolicy) => void;
+}) {
   const [policies, setPolicies] = useState({ reminders: true, refunds: true, spending: false });
   const [policyText, setPolicyText] = useState("");
-  const [parsed, setParsed] = useState(false);
-  const toggle = (key: keyof typeof policies) =>
-    setPolicies((current) => ({ ...current, [key]: !current[key] }));
+  const [parsed, setParsed] = useState<ParsedPolicy | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!policy) return;
+    setPolicies({
+      reminders: policy.rules.some((rule) => rule.action === policyActions.reminders),
+      refunds: policy.rules.some((rule) => rule.action === policyActions.refunds),
+      spending: policy.rules.some((rule) => rule.action === policyActions.spending),
+    });
+  }, [policy]);
+
+  const toggle = async (key: keyof typeof policies) => {
+    const enabled = !policies[key];
+    const next = { ...policies, [key]: enabled };
+    setPolicies(next);
+    setMessage(null);
+    if (!policy) {
+      setMessage("Policy preference updated locally. It will sync when the API is available.");
+      return;
+    }
+    const action = policyActions[key];
+    const rules = policy.rules.filter((rule) => rule.action !== action);
+    if (enabled) {
+      rules.push({
+        id: `${key}-runtime`,
+        action,
+        effect: key === "spending" ? "allow" : "require_approval",
+        description: key === "spending" ? "Allow approved payment actions" : `Require approval for ${key}`,
+      });
+    }
+    setSaving(true);
+    try {
+      const saved = await savePolicyRequest({ ...policy, rules });
+      onPolicySaved(saved);
+      setMessage(`${key === "spending" ? "Autonomous actions" : key[0].toUpperCase() + key.slice(1)} policy ${enabled ? "enabled" : "disabled"}.`);
+    } catch (caught) {
+      setPolicies(policies);
+      setFormError(caught instanceof Error ? caught.message : "Policy could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleParse = async () => {
+    if (!policyText.trim()) {
+      setFormError("Describe a rule before parsing it.");
+      return;
+    }
+    setSaving(true);
+    setFormError(null);
+    try {
+      const result = await parsePolicy(policyText);
+      setParsed(result);
+      setMessage("Draft policy ready for review.");
+    } catch (caught) {
+      const lower = policyText.toLowerCase();
+      const action = lower.includes("refund") ? "issue_refund" : lower.includes("reminder") || lower.includes("collection") ? "send_reminder" : lower.includes("payment") ? "execute_payment" : null;
+      if (action) {
+        setParsed({
+          rule: { id: "local-draft", action, effect: lower.includes("never") || lower.includes("block") ? "deny" : lower.includes("approval") || lower.includes("review") ? "require_approval" : "allow", description: policyText.trim() },
+          confidence: "medium",
+          warnings: ["API unavailable; this is a local draft preview."],
+        });
+        setMessage("API unavailable. Draft policy is ready for local review.");
+      } else {
+        setFormError(caught instanceof Error ? caught.message : "Policy could not be parsed.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveParsed = async () => {
+    if (!parsed) return;
+    setSaving(true);
+    setFormError(null);
+    try {
+      const saved = await savePolicyText(policyText);
+      onPolicySaved(saved);
+      setParsed(null);
+      setPolicyText("");
+      setMessage("Policy saved and enforced for new actions.");
+    } catch (caught) {
+      onPolicySaved({
+        id: policy?.id ?? "local-policy",
+        businessId: policy?.businessId ?? "local-business",
+        version: (policy?.version ?? 0) + 1,
+        rules: [...(policy?.rules ?? []), parsed.rule as ApiPolicyRule],
+      });
+      setParsed(null);
+      setPolicyText("");
+      setMessage("Saved locally. It will sync when the API reconnects.");
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <div className="view-content">
       <div className="page-heading">
@@ -31,10 +151,15 @@ export function PoliciesView() {
           <h1>Permission policies</h1>
           <p>Teach PayPilot how to act — and where to stop.</p>
         </div>
-        <Button onClick={() => setParsed(true)}>
+         <Button onClick={() => { setPolicyText(""); setParsed(null); setFormError(null); }}>
           <Plus size={15} /> New policy
         </Button>
       </div>
+      {loading && <div className="data-status loading-status">Loading runtime policies…</div>}
+      {error && <div className="data-status error-status">Live policies unavailable. Changes will stay local until the API reconnects.</div>}
+      {message && <div className="data-status success-status">{message}</div>}
+      {formError && <div className="data-status error-status">{formError}</div>}
+      {saving && <div className="data-status loading-status">Saving policy changes…</div>}
       <div className="policy-layout">
         <div className="policy-main">
           <div className="policy-hero">
@@ -60,14 +185,14 @@ export function PoliciesView() {
                 <span className="eyebrow">ACTIVE RULES</span>
                 <h2>Runtime policies</h2>
               </div>
-              <span className="policy-count">3 active</span>
+               <span className="policy-count">{policy?.rules.length ?? 3} active</span>
             </div>
             <PolicyCard
               icon={<Send size={17} />}
               iconClass="purple"
               title="Email reminders"
               enabled={policies.reminders}
-              onToggle={() => toggle("reminders")}
+              onToggle={() => void toggle("reminders")}
               description="Max 2 reminders per client per week. Allowed hours: 09:00–18:00. Tone escalation capped at firm."
               tags={["Max 2 / client / week", "9am – 6pm", "Approval required"]}
             />
@@ -76,7 +201,7 @@ export function PoliciesView() {
               iconClass="orange"
               title="Refunds"
               enabled={policies.refunds}
-              onToggle={() => toggle("refunds")}
+              onToggle={() => void toggle("refunds")}
               description="Refunds up to $100 can be drafted. Anything higher needs your explicit approval."
               tags={["Up to $100", "Always approve over limit"]}
             />
@@ -85,7 +210,7 @@ export function PoliciesView() {
               iconClass="teal"
               title="Autonomous actions"
               enabled={policies.spending}
-              onToggle={() => toggle("spending")}
+              onToggle={() => void toggle("spending")}
               description="Allow PayPilot to execute pre-approved workflows without asking every time."
               tags={["Currently off", "High trust mode"]}
             />
@@ -127,14 +252,16 @@ export function PoliciesView() {
               onChange={(event) => setPolicyText(event.target.value)}
               placeholder="e.g. Never send a reminder on weekends..."
             />
-            <Button variant="dark" className="full-button" onClick={() => setParsed(true)}>
-              <Sparkles size={15} /> Parse policy
-            </Button>
-            {parsed && (
-              <div className="parsed-state">
-                <ShieldCheck size={14} /> <span>Draft policy ready for review</span>
-              </div>
-            )}
+             <Button variant="dark" className="full-button" onClick={() => void handleParse()} disabled={saving}>
+               <Sparkles size={15} /> Parse policy
+             </Button>
+             {parsed && (
+               <div className="parsed-state">
+                 <ShieldCheck size={14} />
+                 <span>{parsed.rule.description} · {parsed.confidence} confidence</span>
+                 <Button size="sm" variant="secondary" onClick={() => void handleSaveParsed()} disabled={saving}>Save policy</Button>
+               </div>
+             )}
           </Card>
         </aside>
       </div>

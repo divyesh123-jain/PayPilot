@@ -1,14 +1,7 @@
 export type BusinessKey = "freelancer" | "ecommerce" | "saas" | "agency" | "service" | "creator";
 
 export type ViewKey =
-  | "inbox"
-  | "transactions"
-  | "ask"
-  | "forecast"
-  | "risk"
-  | "policies"
-  | "workflows"
-  | "audit";
+  "inbox" | "transactions" | "ask" | "forecast" | "risk" | "policies" | "workflows" | "audit";
 
 export type TransactionStatus = "Completed" | "Pending" | "Refunded" | "Failed";
 

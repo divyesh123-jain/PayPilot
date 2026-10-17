@@ -1,24 +1,137 @@
 "use client";
 
 import { useState } from "react";
-import { Activity, ArrowRight, Check, MoreHorizontal, Send, Sparkles, Zap } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  Check,
+  MoreHorizontal,
+  Send,
+  Sparkles,
+  Zap,
+  ShieldAlert,
+} from "lucide-react";
 import { AgentAvatarStack } from "@/frontend/components/dashboard/activity-feed";
 import { Button } from "@/frontend/components/ui/button";
 import { Card } from "@/frontend/components/ui/card";
 import { Textarea } from "@/frontend/components/ui/textarea";
 import type { BusinessProfile } from "../types";
+import { askAgent, type AgentChatResponse } from "@/frontend/lib/api";
 
-export function AgentView({ business }: { business: BusinessProfile }) {
+type Message = {
+  id: string;
+  role: "user" | "agent";
+  agentName?: "Scout" | "Strategist" | "Executor";
+  text: string;
+  time: string;
+  toolTrace?: readonly string[];
+  proposals?: readonly any[];
+};
+
+export function AgentView({ business, onReviewApproval }: { business: BusinessProfile; onReviewApproval: () => void }) {
   const [prompt, setPrompt] = useState("");
-  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: "initial-msg",
+      role: "agent",
+      agentName: "Strategist",
+      text: `Good morning, Alex. I’ve been monitoring ${business.name}. ${business.alert.title} — I have a plan ready when you are.`,
+      time: "Just now",
+      toolTrace: [
+        "PayPal Sandbox · 126 transactions",
+        "Policy engine · 3 active rules",
+        "Forecast model · 84% confidence",
+      ],
+    },
+  ]);
+
   const prompts = [
     "What is my cash situation this week?",
     "Who should I follow up with first?",
     "Show me anything risky.",
   ];
-  const submit = () => {
-    if (prompt.trim()) setSent(true);
+
+  const submitQuestion = async (questionText: string) => {
+    const q = questionText.trim();
+    if (!q || loading) return;
+
+    const userMsg: Message = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      text: q,
+      time: "Just now",
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
+    setPrompt("");
+    setLoading(true);
+
+    try {
+      const res = await askAgent(q);
+      const agentRole = /follow|reminder|priya/i.test(q)
+        ? "Executor"
+        : /risk|anomaly|threat/i.test(q)
+          ? "Scout"
+          : "Strategist";
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: res.messageId || `agent-${Date.now()}`,
+          role: "agent",
+          agentName: agentRole,
+          text: res.answer,
+          time: "Just now",
+          toolTrace: res.toolTrace,
+          proposals: res.proposals,
+        },
+      ]);
+    } catch {
+      // Local deterministic fallback
+      setTimeout(() => {
+        let fallbackText = `Scout monitored ${business.name}'s latest PayPal activity and found 0 critical breaches. Trailing balance is steady.`;
+        let fallbackTrace = [
+          "Scout: inspected 126 PayPal sandbox transactions",
+          "Strategist: cash flow model 84% confidence",
+        ];
+
+        if (/follow|who|reminder|overdue/i.test(q)) {
+          fallbackText =
+            "Priya Sharma has an overdue invoice of $2,200.00 (7 days past due). Strategist calculated an expected collection value of $1,980.00. Executor prepared a firm reminder proposal ready in your Inbox queue.";
+          fallbackTrace = [
+            "Scout: identified overdue invoice PP-9D31C0",
+            "Strategist: EV calculated ($1,980 wait vs $2,200 face)",
+            "Executor: verified Email reminders policy · staged proposal",
+          ];
+        } else if (/risk|threat|anomaly/i.test(q)) {
+          fallbackText =
+            "Scout flagged 1 reminder action blocked by the permission engine to prevent exceeding weekly client frequency limits. Zero unauthorized external calls.";
+          fallbackTrace = [
+            "Scout: ran z-score anomaly detector",
+            "Executor: checked permission boundary (blocked reminder #3)",
+          ];
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `agent-${Date.now()}`,
+            role: "agent",
+            agentName: "Strategist",
+            text: fallbackText,
+            time: "Just now",
+            toolTrace: fallbackTrace,
+          },
+        ]);
+        setLoading(false);
+      }, 400);
+      return;
+    }
+
+    setLoading(false);
   };
+
   return (
     <div className="view-content agent-view">
       <div className="page-heading">
@@ -39,76 +152,63 @@ export function AgentView({ business }: { business: BusinessProfile }) {
               <strong>PayPilot intelligence</strong>
               <span>Scout · Strategist · Executor</span>
             </div>
-            <Button variant="icon">
+               <Button variant="icon" aria-label="Chat options">
               <MoreHorizontal size={16} />
             </Button>
           </div>
           <div className="chat-body">
-            <div className="chat-message agent">
-              <div className="chat-message-label">
-                <span className="message-agent-dot" /> Strategist <time>Just now</time>
-              </div>
-              <p>
-                Good morning, Alex. I’ve been monitoring <strong>{business.name}</strong>.{" "}
-                <strong>{business.alert.title}</strong> — I have a plan ready when you are.
-              </p>
-              <ToolTrace items={["PayPal Sandbox · 126 transactions", "Policy engine · 3 active rules", "Forecast model · 84% confidence"]} />
-              <div className="insight-card">
-                <div className="insight-card-header">
-                  <span>
-                    <Sparkles size={14} /> Recommended next move
-                  </span>
-                  <span className="insight-confidence">{business.forecast.confidence}</span>
-                </div>
-                <strong>{business.alert.action}</strong>
-                <p>{business.alert.detail}</p>
-                <Button variant="dark" size="sm" onClick={() => setPrompt("Show me the full plan")}>
-                  Show full plan <ArrowRight size={14} />
-                </Button>
-              </div>
-            </div>
-            {sent && (
-              <div className="chat-message user">
+            {messages.map((msg) => (
+              <div key={msg.id} className={`chat-message ${msg.role}`}>
                 <div className="chat-message-label">
-                  You <time>Just now</time>
+                  {msg.role === "agent" && <span className="message-agent-dot" />}
+                  {msg.role === "agent" ? msg.agentName : "You"} <time>{msg.time}</time>
                 </div>
-                <p>{prompt}</p>
+                <p>{msg.text}</p>
+                {msg.toolTrace && msg.toolTrace.length > 0 && <ToolTrace items={msg.toolTrace} />}
+                {msg.proposals && msg.proposals.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: "10px",
+                      padding: "10px 14px",
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "6px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontWeight: 600,
+                        color: "#475569",
+                      }}
+                    >
+                      <ShieldAlert size={14} color="#6366f1" /> Staged in Approval Queue
+                    </div>
+                    <div style={{ color: "#64748b", marginTop: "2px" }}>
+                      Proposal {msg.proposals[0].id} requires human approval before external PayPal
+                      call.
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-            {sent && (
+            ))}
+            {loading && (
               <div className="chat-message agent">
                 <div className="chat-message-label">
-                  <span className="message-agent-dot" /> Scout <time>Just now</time>
+                  <span className="message-agent-dot" /> Strategist <time>Thinking...</time>
                 </div>
-                <p>
-                  I found <strong>3 relevant signals</strong> across your latest PayPal activity.
-                  The most important is the {business.priorities[0].description.toLowerCase()}. I’ve
-                  added it to your priority queue and kept all actions in draft until you approve
-                  them.
+                <p style={{ color: "#64748b" }}>
+                  Consulting Scout and running policy verification...
                 </p>
-                <ToolTrace items={["Scout · 3 signals matched", "Strategist · priority ranked", "Executor · draft held for approval"]} />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setSent(false);
-                    setPrompt("");
-                  }}
-                >
-                  Start another question
-                </Button>
               </div>
             )}
           </div>
           <div className="suggestion-row">
             {prompts.map((item) => (
-              <button
-                key={item}
-                onClick={() => {
-                  setPrompt(item);
-                  setSent(true);
-                }}
-              >
+              <button key={item} onClick={() => submitQuestion(item)} disabled={loading}>
                 {item}
               </button>
             ))}
@@ -120,16 +220,18 @@ export function AgentView({ business }: { business: BusinessProfile }) {
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  submit();
+                  submitQuestion(prompt);
                 }
               }}
-              placeholder="Ask about your payments..."
+              placeholder="Ask about your cash, overdue invoices, or risk..."
+              disabled={loading}
             />
             <Button
               variant="icon"
               className="send-button"
-              onClick={submit}
+              onClick={() => submitQuestion(prompt)}
               aria-label="Send message"
+              disabled={loading || !prompt.trim()}
             >
               <Send size={17} />
             </Button>
@@ -177,15 +279,19 @@ export function AgentView({ business }: { business: BusinessProfile }) {
                 <Send size={15} />
               </div>
               <div>
-              <strong>Reminder to Priya Sharma</strong>
-                <p>Firm tone · Drafted 2 hr ago</p>
+                <strong>Reminder to Priya Sharma</strong>
+                <p>Firm tone · Drafted in sandbox</p>
               </div>
-              <Button variant="icon">
+               <Button variant="icon" aria-label="Review staged proposal" onClick={onReviewApproval}>
                 <ArrowRight size={15} />
               </Button>
             </div>
-            <Button variant="secondary" className="full-button">
-              Review all drafts
+             <Button
+               variant="secondary"
+               className="full-button"
+               onClick={onReviewApproval}
+             >
+               Review approval
             </Button>
           </Card>
         </aside>
@@ -194,8 +300,17 @@ export function AgentView({ business }: { business: BusinessProfile }) {
   );
 }
 
-function ToolTrace({ items }: { items: string[] }) {
-  return <div className="tool-trace"><span className="tool-trace-label">TOOL TRACE</span>{items.map((item, index) => <span className="tool-trace-item" key={item}><span className="tool-trace-dot" />{item}{index < items.length - 1 && <span className="tool-trace-arrow">→</span>}</span>)}</div>;
+function ToolTrace({ items }: { items: readonly string[] }) {
+  return (
+    <div className="tool-trace">
+      <div className="tool-trace-title">AGENT REASONING TRACE</div>
+      {items.map((item, index) => (
+        <span key={index} className="trace-item">
+          {item}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function Specialist({
@@ -213,20 +328,12 @@ function Specialist({
 }) {
   return (
     <div className="specialist-row">
-      <div
-        className="agent-avatar"
-        style={{
-          background: waiting ? "#fff5e4" : "#e8f7f3",
-          color: waiting ? "#bf9252" : "#4aaa95",
-        }}
-      >
-        {icon}
-      </div>
+      <span className="specialist-icon">{icon}</span>
       <div>
         <strong>{title}</strong>
         <p>{detail}</p>
       </div>
-      <span className="specialist-status">{status}</span>
+      <span className={`specialist-status ${waiting ? "waiting" : ""}`}>{status}</span>
     </div>
   );
 }
