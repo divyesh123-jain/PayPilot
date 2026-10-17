@@ -2,15 +2,18 @@
 
 test:
 	cd backend && npm test
+	cd frontend && npm run typecheck
 
 build:
 	cd backend && npm run build
+	cd frontend && npm run build
 
 run:
-	cd backend && npm start
+	docker compose up --build
 
 docker-build:
-	docker build -t paypilot-domain .
+	docker build --target api -t paypilot-api .
+	docker build --target web -t paypilot-web .
 
 docker-run:
-	docker run --rm paypilot-domain
+	docker compose up --build

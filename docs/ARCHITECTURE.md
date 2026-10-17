@@ -46,4 +46,12 @@ See `backend/README.md` for the route list. The most important demo routes are:
 - `GET /api/transactions`, `/api/findings`, `/api/forecast`;
 - `POST /api/simulate` and `/api/proposals/:id/{approve,reject,execute}`;
 - `POST /api/webhooks/{ingest,replay}` with idempotency;
-- `GET /api/audit/verify` and `GET /api/stream`.
+- `GET /api/audit/verify` and `GET /api/stream`;
+- `GET /api/onboarding`, `/api/connections`, `/api/lifecycle`, and `/api/notifications`
+  with POST controls for onboarding advancement, connection state, lifecycle actions, and
+  notification acknowledgement.
+
+The demo lifecycle is intentionally deterministic and in-memory: disconnect expires pending
+proposals before any provider call, export returns a stable file manifest, and deletion creates
+a 14-day grace-period request. The PostgreSQL schema is the persistence contract for replacing
+that demo state with tenant-scoped storage.
