@@ -28,6 +28,24 @@ export interface CollectionSimulation {
   readonly customerExperienceCost: number;
 }
 
+export interface DiscountSimulationInput {
+  readonly amountCents: number;
+  readonly discountPct: number;
+  readonly waitProbability: number;
+  readonly waitDays: number;
+}
+
+export interface DiscountSimulation {
+  readonly amountCents: number;
+  readonly discountPct: number;
+  readonly acceptEvCents: number;
+  readonly waitEvCents: number;
+  readonly waitProbability: number;
+  readonly waitDays: number;
+  readonly recommendation: "accept" | "wait";
+  readonly assumptions: readonly string[];
+}
+
 function daysOverdue(dueDate: string, asOf: string): number {
   return Math.floor((Date.parse(asOf) - Date.parse(dueDate)) / 86_400_000);
 }
@@ -78,6 +96,34 @@ export function simulateCollection(receivable: OpenReceivable, strategy: Collect
     expectedRecoveredCents: Math.round(receivable.amountCents * rate),
     expectedRecoveryRate: rate,
     customerExperienceCost: modifiers[strategy].cost,
+  };
+}
+
+/**
+ * Compare a certain discounted payment with the expected value of waiting.
+ * This is deliberately a pure function: the model receives only integer cents
+ * and explicit assumptions, so an LLM cannot change the money math.
+ */
+export function simulateDiscount(input: DiscountSimulationInput): DiscountSimulation {
+  if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) throw new Error("amountCents must be a positive integer");
+  if (!Number.isFinite(input.discountPct) || input.discountPct < 0 || input.discountPct > 100) throw new Error("discountPct must be between 0 and 100");
+  if (!Number.isFinite(input.waitProbability) || input.waitProbability < 0 || input.waitProbability > 1) throw new Error("waitProbability must be between 0 and 1");
+  if (!Number.isSafeInteger(input.waitDays) || input.waitDays < 0) throw new Error("waitDays must be a non-negative integer");
+  const acceptEvCents = Math.round(input.amountCents * (1 - input.discountPct / 100));
+  const waitEvCents = Math.round(input.amountCents * input.waitProbability);
+  return {
+    amountCents: input.amountCents,
+    discountPct: input.discountPct,
+    acceptEvCents,
+    waitEvCents,
+    waitProbability: input.waitProbability,
+    waitDays: input.waitDays,
+    recommendation: acceptEvCents >= waitEvCents ? "accept" : "wait",
+    assumptions: [
+      "Accepting the offer is treated as certain same-day settlement.",
+      `Waiting ${input.waitDays} days has a ${(input.waitProbability * 100).toFixed(0)}% payment probability.`,
+      "Expected value excludes fees, taxes, and customer-experience cost.",
+    ],
   };
 }
 

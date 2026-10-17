@@ -87,6 +87,118 @@ test("session business switch is typed and reminder proposals require approval",
   const simulation = await request(base, "/api/simulate", { action: "send_reminder", rationale: "Review overdue invoice" });
   assert.equal(simulation.status, 200);
   assert.equal((simulation.body.proposal as { policyDecision: { requiresApproval: boolean } }).policyDecision.requiresApproval, true);
+
+  const chat = await request(base, "/api/agent/chat", { prompt: "Who should I follow up with first?" });
+  assert.equal(chat.status, 200);
+  assert.ok(chat.body.answer.includes("Priya Sharma"));
+  assert.ok(Array.isArray(chat.body.toolTrace));
+  assert.ok(chat.body.toolTrace.length >= 2);
+  assert.equal(chat.body.proposals.length, 1);
+});
+
+test("extended API supports deterministic what-if, lifecycle, onboarding, and notification flows", async (t) => {
+  const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
+  const server = createApiServer({ service }).listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const simulation = await request(base, "/api/simulate", { invoiceId: "inv-overdue", amountCents: 220000, discountPct: 10 });
+  assert.equal(simulation.status, 200);
+  assert.equal(simulation.body.simulation.acceptEvCents, 198000);
+  assert.equal(simulation.body.simulation.waitEvCents, 132000);
+
+  const onboarding = await request(base, "/api/onboarding");
+  assert.equal(onboarding.status, 200);
+  const advanced = await request(base, "/api/onboarding/advance", { stepId: "connect_paypal", status: "complete" });
+  assert.equal(advanced.body.currentStep, "backfill");
+
+  const paused = await request(base, "/api/lifecycle/pause", {});
+  assert.equal(paused.body.paused, true);
+  const exported = await request(base, "/api/lifecycle/export", {});
+  assert.equal(exported.body.exportJobs[0].status, "completed");
+  const disconnected = await request(base, "/api/connections/paypal/disconnect", {});
+  assert.equal(disconnected.body.connection.status, "disconnected");
+
+  const notifications = await request(base, "/api/notifications");
+  const notificationId = notifications.body.data[0].id as string;
+  const read = await request(base, `/api/notifications/${notificationId}/read`, {});
+  assert.equal(read.body.readAt, "2026-01-15T00:00:00.000Z");
+});
+
+test("audit verification checks the chained hashes, not only stable IDs", () => {
+  const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
+  service.ingestWebhook({ id: "chain-event", type: "TEST" });
+  const events = service.auditEvents();
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.prevHash, "GENESIS");
+  assert.equal(typeof events[0]?.hash, "string");
+  assert.deepEqual(service.verifyAudit(), { valid: true, checked: 1, invalidIds: [] });
+});
+
+test("transaction filters, clients, workflow persistence, and policy violations are exposed", async (t) => {
+  const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
+  const server = createApiServer({ service }).listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const page = await request(base, "/api/transactions?status=completed&page=1&pageSize=1");
+  assert.equal(page.status, 200);
+  assert.equal(page.body.pagination.total, 3);
+  assert.equal(page.body.data.length, 1);
+  const clients = await request(base, "/api/clients");
+  assert.equal(clients.status, 200);
+  assert.ok(clients.body.data.some((client: { name: string }) => client.name === "Acme Labs"));
+
+  const workflow = await request(base, "/api/workflows", { text: "Send a reminder for overdue invoices" });
+  assert.equal(workflow.status, 201);
+  const workflowId = workflow.body.id as string;
+  const listed = await request(base, "/api/workflows");
+  assert.equal(listed.body.data.length, 1);
+  const run = await request(base, `/api/workflows/${workflowId}/run`, {});
+  assert.equal(run.status, 200);
+  assert.equal(run.body.workflow.lastProposalId, run.body.proposal.id);
+
+  const blocked = await request(base, "/api/simulate", { action: "issue_refund", amountCents: 1000 });
+  assert.equal(blocked.status, 200);
+  const violations = await request(base, "/api/policy/violations");
+  assert.equal(violations.status, 200);
+  assert.equal(violations.body.data.length, 1);
+  const parsedPolicy = await request(base, "/api/policy/parse", { text: "Payments over $100 require approval" });
+  assert.equal(parsedPolicy.status, 200);
+  assert.equal(parsedPolicy.body.rule.requiresApprovalAboveCents, 10000);
+  const savedPolicy = await request(base, "/api/policy/save", { text: "Deny refunds" });
+  assert.equal(savedPolicy.status, 200);
+  assert.equal(savedPolicy.body.version, 2);
+  const audit = await request(base, "/api/audit/verify");
+  assert.equal(audit.status, 200);
+  assert.equal(audit.body.valid, true);
+});
+
+test("role-scoped traces hide executor details and replay controls are deterministic", async (t) => {
+  const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
+  const server = createApiServer({ service }).listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const chat = await request(base, "/api/agent/chat", { prompt: "Who should I follow up with?", roles: ["viewer"] });
+  assert.equal(chat.status, 200);
+  assert.ok(chat.body.toolTrace.every((entry: string) => !entry.startsWith("Executor:")));
+  const replay = await request(base, "/api/dev/replay", {});
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.paymentMode, "mock");
+  const transactions = await request(base, "/api/transactions");
+  assert.equal(transactions.body.data[0].id, "replay-txn-001");
+  const invalid = await request(base, "/api/transactions?pageSize=0");
+  assert.equal(invalid.status, 400);
 });
 
 async function request(base: string, path: string, body?: Record<string, unknown>, headers: Record<string, string> = {}): Promise<{ status: number; body: Record<string, any> }> {

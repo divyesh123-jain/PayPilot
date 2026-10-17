@@ -21,6 +21,8 @@ export interface AuditEventInput {
 export interface AuditEvent extends AuditEventInput {
   readonly id: string;
   readonly metadata: Readonly<Record<string, JsonValue>>;
+  readonly prevHash?: string;
+  readonly hash?: string;
 }
 
 function stableId(input: AuditEventInput): string {
@@ -63,7 +65,9 @@ export class InMemoryAuditEventStore implements AuditEventStore {
     if (this.events.some((existing) => existing.id === event.id)) {
       throw new Error(`Audit event ${event.id} already exists`);
     }
-    this.events.push({ ...event, metadata: { ...event.metadata } });
+    const prevHash = this.events.at(-1)?.hash ?? "GENESIS";
+    const chained = { ...event, metadata: { ...event.metadata }, prevHash };
+    this.events.push({ ...chained, hash: hashEvent(chained) });
   }
 
   list(filter: { businessId?: string; action?: string; resourceId?: string } = {}): readonly AuditEvent[] {
@@ -75,4 +79,18 @@ export class InMemoryAuditEventStore implements AuditEventStore {
       )
       .map((event) => ({ ...event, metadata: { ...event.metadata } }));
   }
+}
+
+/** The hash excludes the chain fields so verification can be reproduced from the row itself. */
+export function hashEvent(event: Omit<AuditEvent, "hash" | "prevHash"> & { prevHash: string }): string {
+  return createHash("sha256")
+    .update(event.prevHash + canonicalJson(event))
+    .digest("hex");
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(object[key])}`).join(",")}}`;
 }

@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { ApiConflictError, ApiNotFoundError, createDefaultService, PayPilotService } from "./service.js";
+import { ApiConflictError, ApiNotFoundError, createDefaultService, PayPilotService, type AgentActor } from "./service.js";
 
 const MAX_BODY_BYTES = 1_000_000;
 
@@ -23,16 +23,40 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
   try {
     if (request.method === "GET" && url.pathname === "/health") return sendJson(response, 200, { ok: true, paymentMode: service.paymentMode });
     if (request.method === "GET" && url.pathname === "/api/session") return sendJson(response, 200, service.session());
+    if (request.method === "GET" && url.pathname === "/api/onboarding") return sendJson(response, 200, service.onboarding());
+    if (request.method === "GET" && (url.pathname === "/api/connections" || url.pathname === "/api/connections/paypal")) return sendJson(response, 200, { data: [service.connection()] });
+    if (request.method === "GET" && url.pathname === "/api/lifecycle") return sendJson(response, 200, service.lifecycle());
+    if (request.method === "GET" && url.pathname === "/api/notifications") return sendJson(response, 200, { data: service.notificationsList() });
+    if (request.method === "GET" && (url.pathname === "/api/profile" || url.pathname === "/api/business/profile")) return sendJson(response, 200, service.profile());
+    if (request.method === "GET" && (url.pathname === "/api/clients" || url.pathname === "/api/business/clients")) return sendJson(response, 200, { data: service.clients() });
+    const clientMatch = url.pathname.match(/^\/api\/clients\/([^/]+)$/);
+    if (request.method === "GET" && clientMatch?.[1]) return sendJson(response, 200, service.client(decodeURIComponent(clientMatch[1])));
+    const clientProfileMatch = url.pathname.match(/^\/api\/clients\/([^/]+)\/profile$/);
+    if (request.method === "GET" && clientProfileMatch?.[1]) return sendJson(response, 200, service.client(decodeURIComponent(clientProfileMatch[1])));
+    if (request.method === "GET" && url.pathname === "/api/business") return sendJson(response, 200, service.profile());
     if (request.method === "GET" && url.pathname === "/api/scenarios") return sendJson(response, 200, { data: [{ scenarioId: service.session().scenarioId, business: service.businessContext.profile }] });
     if (request.method === "GET" && (url.pathname === "/api/seed" || url.pathname === `/api/scenarios/${service.session().scenarioId}`)) {
       return sendJson(response, 200, { scenarioId: service.session().scenarioId, business: service.businessContext.profile, transactions: service.transactions(), policy: service.currentPolicy });
     }
-    if (request.method === "GET" && url.pathname === "/api/transactions") return sendJson(response, 200, { data: service.transactions(), mode: service.paymentMode });
+    if (request.method === "GET" && url.pathname === "/api/transactions") return sendJson(response, 200, { ...service.transactionPage(transactionQuery(url)), mode: service.paymentMode });
+    const transactionMatch = url.pathname.match(/^\/api\/transactions\/([^/]+)$/);
+    if (request.method === "GET" && transactionMatch?.[1]) {
+      const transactionId = transactionMatch[1];
+      const transaction = service.transactions().find((candidate) => candidate.id === decodeURIComponent(transactionId));
+      if (!transaction) throw new ApiNotFoundError(`Transaction ${decodeURIComponent(transactionId)} was not found`);
+      return sendJson(response, 200, transaction);
+    }
     if (request.method === "POST" && url.pathname === "/api/transactions/refresh") return sendJson(response, 200, { data: await service.refreshTransactions(), mode: service.paymentMode });
-    if (request.method === "GET" && url.pathname === "/api/findings") return sendJson(response, 200, { data: service.findings() });
+    if (request.method === "GET" && url.pathname === "/api/findings") {
+      const severity = url.searchParams.get("severity");
+      if (severity !== null && !["info", "warning", "critical"].includes(severity)) throw new Error("severity must be info, warning, or critical");
+      const findings = severity === null ? service.findings() : service.findings().filter((finding) => finding.severity === severity);
+      return sendJson(response, 200, { data: findings });
+    }
+    if (request.method === "GET" && (url.pathname === "/api/policy/violations" || url.pathname === "/api/violations")) return sendJson(response, 200, { data: service.policyViolations() });
     if (request.method === "GET" && url.pathname === "/api/forecast") {
       const openingBalanceCents = optionalInteger(url.searchParams.get("openingBalanceCents"), "openingBalanceCents");
-      const horizonDays = optionalInteger(url.searchParams.get("horizonDays"), "horizonDays");
+      const horizonDays = optionalInteger(url.searchParams.get("horizonDays") ?? url.searchParams.get("days"), "horizonDays");
       return sendJson(response, 200, service.forecast({
         ...(openingBalanceCents === undefined ? {} : { openingBalanceCents }),
         ...(horizonDays === undefined ? {} : { horizonDays }),
@@ -43,27 +67,67 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
     if (request.method === "GET" && proposalReadMatch?.[1]) return sendJson(response, 200, service.getProposal(decodeURIComponent(proposalReadMatch[1])));
     if (request.method === "GET" && url.pathname === "/api/audit") return sendJson(response, 200, { data: service.auditEvents() });
     if (request.method === "GET" && url.pathname === "/api/audit/verify") return sendJson(response, 200, service.verifyAudit());
-    if (request.method === "GET" && url.pathname === "/api/policy") return sendJson(response, 200, service.currentPolicy);
-    if (request.method === "GET" && url.pathname === "/api/workflows") return sendJson(response, 200, { data: [] });
+    if (request.method === "GET" && (url.pathname === "/api/policy" || url.pathname === "/api/policies")) return sendJson(response, 200, service.currentPolicy);
+    if (request.method === "GET" && url.pathname === "/api/workflows") return sendJson(response, 200, { data: service.listWorkflows() });
+    const workflowReadMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)$/);
+    if (request.method === "GET" && workflowReadMatch?.[1]) return sendJson(response, 200, service.getWorkflow(decodeURIComponent(workflowReadMatch[1])));
+    if (request.method === "GET" && (url.pathname === "/api/dev/replay" || url.pathname === "/api/dev/replay/state")) return sendJson(response, 200, { session: service.session(), transactions: service.transactions(), mode: service.paymentMode });
     if (request.method === "GET" && (url.pathname === "/api/stream" || url.pathname === "/api/events")) return stream(response, service);
 
     if (request.method !== "POST") return sendJson(response, 404, { error: "Route not found" });
     const body = await readJsonBody(request);
-    if (url.pathname === "/api/simulate") return sendJson(response, 200, service.simulate(parseSimulationBody(body)));
-    if (url.pathname === "/api/policy/parse") return sendJson(response, 200, service.parsePolicy(requiredString(body.text, "text")));
-    if (url.pathname === "/api/policy" || url.pathname === "/api/policy/save") return sendJson(response, 200, service.savePolicy(parsePolicyBody(body)));
+    if (url.pathname === "/api/agent/chat") {
+      const prompt = requiredString(body.prompt ?? body.text ?? body.message, "prompt");
+      return sendJson(response, 200, await service.agentChat(prompt, actorFrom(request, body)));
+    }
+    if (url.pathname === "/api/simulate") {
+      const simulationInput = parseSimulationBody(body);
+      if (simulationInput.discountPct !== undefined) {
+        return sendJson(response, 200, service.simulateWhatIf({
+          amountCents: simulationInput.amountCents ?? 220_000,
+          discountPct: simulationInput.discountPct,
+          waitProbability: simulationInput.waitProbability ?? 0.6,
+          waitDays: simulationInput.waitDays ?? 7,
+        }));
+      }
+      return sendJson(response, 200, service.simulate(simulationInput));
+    }
+    if (url.pathname === "/api/policy/parse" || url.pathname === "/api/policies/parse") return sendJson(response, 200, service.parsePolicy(requiredString(body.text, "text")));
+    if (url.pathname === "/api/policy" || url.pathname === "/api/policy/save" || url.pathname === "/api/policies") return sendJson(response, 200, service.savePolicy(parsePolicyBody(body)));
     if (url.pathname === "/api/workflows/parse") return sendJson(response, 200, service.parseWorkflow(requiredString(body.text, "text")));
+    if (url.pathname === "/api/workflows") {
+      const workflow = body.workflow && typeof body.workflow === "object" && !Array.isArray(body.workflow)
+        ? body.workflow as Parameters<PayPilotService["createWorkflow"]>[0]
+        : service.parseWorkflow(requiredString(body.text, "text"));
+      return sendJson(response, 201, service.createWorkflow(workflow));
+    }
     if (url.pathname === "/api/workflows/run") {
-      const workflow = body.workflow && typeof body.workflow === "object" ? body.workflow as Parameters<PayPilotService["runWorkflow"]>[0] : service.parseWorkflow(requiredString(body.text, "text"));
+      const workflow = typeof body.workflowId === "string" ? body.workflowId : body.workflow && typeof body.workflow === "object" ? body.workflow as Parameters<PayPilotService["runWorkflow"]>[0] : service.parseWorkflow(requiredString(body.text, "text"));
       return sendJson(response, 200, service.runWorkflow(workflow));
     }
+    if (url.pathname === "/api/dev/replay" || url.pathname === "/api/dev/replay/state") return sendJson(response, 200, service.replayState());
+    if (url.pathname === "/api/dev/reset" || url.pathname === "/api/dev/replay/reset") return sendJson(response, 200, service.resetState());
+    if (url.pathname === "/api/onboarding" || url.pathname === "/api/onboarding/advance") {
+      const stepId = requiredString(body.stepId, "stepId");
+      const status = body.status === undefined ? "complete" : requiredString(body.status, "status");
+      if (status !== "in_progress" && status !== "complete" && status !== "skipped") throw new Error("status must be in_progress, complete, or skipped");
+      return sendJson(response, 200, service.advanceOnboarding(stepId, status));
+    }
+    if (url.pathname === "/api/connections/paypal/connect") return sendJson(response, 200, service.connectPayPal());
+    if (url.pathname === "/api/connections/paypal/disconnect" || url.pathname === "/api/lifecycle/disconnect") return sendJson(response, 200, service.disconnectPayPal());
+    if (url.pathname === "/api/lifecycle/pause") return sendJson(response, 200, service.pauseAgent());
+    if (url.pathname === "/api/lifecycle/resume") return sendJson(response, 200, service.resumeAgent());
+    if (url.pathname === "/api/lifecycle/export") return sendJson(response, 200, service.createExport());
+    if (url.pathname === "/api/lifecycle/delete") return sendJson(response, 200, service.scheduleDeletion());
+    const notificationMatch = url.pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
+    if (notificationMatch?.[1]) return sendJson(response, 200, service.markNotificationRead(decodeURIComponent(notificationMatch[1])));
     if (url.pathname === "/api/webhooks/ingest" || url.pathname === "/api/webhooks/replay" || url.pathname === "/api/webhooks") {
       const event = url.pathname === "/api/webhooks/replay" && body.id === undefined
         ? { id: "replay-event-001", type: "PAYMENT.CAPTURE.COMPLETED", resource: { captureId: "capture-replay-001", amountCents: 12900 } }
         : body;
       return sendJson(response, 200, service.ingestWebhook(event, header(request, "idempotency-key")));
     }
-    if (url.pathname === "/api/session") {
+    if (url.pathname === "/api/session" || url.pathname === "/api/business/switch" || url.pathname === "/api/business/context") {
       if (body.businessType !== undefined) {
         const supported = ["freelancer", "ecommerce", "saas", "agency", "service", "creator"] as const;
         if (typeof body.businessType !== "string" || !supported.includes(body.businessType as (typeof supported)[number])) {
@@ -80,6 +144,8 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       if (proposalMatch[2] === "reject") return sendJson(response, 200, service.rejectProposal(proposalId));
       return sendJson(response, 200, await service.executeProposal(proposalId));
     }
+    const workflowRunMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/run$/);
+    if (workflowRunMatch?.[1]) return sendJson(response, 200, service.runWorkflow(decodeURIComponent(workflowRunMatch[1])));
     return sendJson(response, 404, { error: "Route not found" });
   } catch (error) {
     const status = error instanceof ApiNotFoundError ? 404 : error instanceof ApiConflictError ? 409 : error instanceof Error && error.name === "PolicyViolationError" ? 403 : 400;
@@ -127,17 +193,25 @@ function optionalInteger(value: string | null, name: string): number | undefined
   return parsed;
 }
 
-function parseSimulationBody(body: Record<string, unknown>): { action?: "execute_payment" | "send_reminder" | "create_workflow" | "issue_refund" | "schedule_payment" | "export_data"; amountCents?: number; resourceId?: string; rationale?: string } {
+function parseSimulationBody(body: Record<string, unknown>): import("./service.js").SimulationInput {
   const actionValue = body.action === undefined ? undefined : requiredString(body.action, "action");
   const supported = ["execute_payment", "send_reminder", "create_workflow", "issue_refund", "schedule_payment", "export_data"] as const;
   const action = actionValue === undefined ? undefined : supported.find((candidate) => candidate === actionValue);
   if (actionValue !== undefined && action === undefined) throw new Error("action is not supported");
   const amountCents = body.amountCents === undefined ? undefined : integer(body.amountCents, "amountCents");
+  const discountPct = body.discountPct === undefined ? undefined : number(body.discountPct, "discountPct");
+  const waitProbability = body.waitProbability === undefined ? undefined : number(body.waitProbability, "waitProbability");
+  const waitDays = body.waitDays === undefined ? undefined : integer(body.waitDays, "waitDays");
   return {
     ...(action === undefined ? {} : { action }),
     ...(amountCents === undefined ? {} : { amountCents }),
-    ...(body.resourceId === undefined ? {} : { resourceId: requiredString(body.resourceId, "resourceId") }),
+    ...(body.resourceId === undefined && body.invoiceId === undefined && body.clientId === undefined ? {} : { resourceId: requiredString(body.resourceId ?? body.invoiceId ?? body.clientId, "resourceId") }),
     ...(body.rationale === undefined ? {} : { rationale: requiredString(body.rationale, "rationale") }),
+    ...(body.clientId === undefined ? {} : { clientId: requiredString(body.clientId, "clientId") }),
+    ...(body.invoiceId === undefined ? {} : { invoiceId: requiredString(body.invoiceId, "invoiceId") }),
+    ...(discountPct === undefined ? {} : { discountPct }),
+    ...(waitProbability === undefined ? {} : { waitProbability }),
+    ...(waitDays === undefined ? {} : { waitDays }),
   };
 }
 
@@ -152,7 +226,53 @@ function integer(value: unknown, name: string): number {
   return value;
 }
 
+function number(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${name} must be a finite number`);
+  return value;
+}
+
 function header(request: IncomingMessage, name: string): string | undefined {
   const value = request.headers[name];
   return Array.isArray(value) ? value[0] : value;
+}
+
+function transactionQuery(url: URL): import("./service.js").TransactionListQuery {
+  const integerQuery = (name: string): number | undefined => {
+    const value = url.searchParams.get(name);
+    if (value === null) return undefined;
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed)) throw new Error(`${name} must be an integer`);
+    return parsed;
+  };
+  const value = (name: string): string | undefined => url.searchParams.get(name) ?? undefined;
+  const query: { -readonly [K in keyof import("./service.js").TransactionListQuery]?: import("./service.js").TransactionListQuery[K] } = {};
+  const status = value("status");
+  const direction = value("direction");
+  const counterparty = value("counterparty");
+  const category = value("category");
+  const search = value("search") ?? value("q");
+  const from = value("from");
+  const to = value("to");
+  const page = integerQuery("page");
+  const pageSize = integerQuery("pageSize") ?? integerQuery("limit");
+  const offset = integerQuery("offset");
+  if (status !== undefined) query.status = status;
+  if (direction !== undefined) query.direction = direction;
+  if (counterparty !== undefined) query.counterparty = counterparty;
+  if (category !== undefined) query.category = category;
+  if (search !== undefined) query.search = search;
+  if (from !== undefined) query.from = from;
+  if (to !== undefined) query.to = to;
+  if (page !== undefined) query.page = page;
+  if (pageSize !== undefined) query.pageSize = pageSize;
+  if (offset !== undefined) query.offset = offset;
+  return query;
+}
+
+function actorFrom(request: IncomingMessage, body: Record<string, unknown>): AgentActor {
+  const rolesValue = body.roles ?? header(request, "x-roles") ?? header(request, "x-role");
+  const roles = Array.isArray(rolesValue)
+    ? rolesValue.filter((role): role is string => typeof role === "string")
+    : typeof rolesValue === "string" ? rolesValue.split(",").map((role) => role.trim()).filter(Boolean) : ["operator"];
+  return { userId: typeof body.userId === "string" ? body.userId : header(request, "x-user-id") ?? "demo-user", roles: roles.length > 0 ? roles : ["operator"] };
 }
