@@ -302,3 +302,123 @@ export function subscribeEventStream(onEvent: (event: string, data: any) => void
     return () => {};
   }
 }
+
+export type OnboardingStep = {
+  id: string;
+  label: string;
+  status: "pending" | "in_progress" | "complete" | "skipped" | "failed";
+  updatedAt: string;
+};
+
+export type OnboardingState = {
+  currentStep: string;
+  steps: readonly OnboardingStep[];
+  autonomyLevel?: "L0" | "L1";
+  completedAt?: string;
+  account?: {
+    email?: string;
+    businessName?: string;
+    businessType?: string;
+    name?: string;
+  };
+  consent?: {
+    granted: boolean;
+    consentedAt?: string;
+    scopes?: readonly string[];
+  };
+  trust?: {
+    policyTemplate?: string;
+    quietHoursStart?: string;
+    quietHoursEnd?: string;
+    timezone?: string;
+    replyToEmail?: string;
+  };
+};
+
+export type ConnectionState = {
+  provider: "paypal";
+  status: "active" | "needs_reauth" | "revoked" | "disconnected";
+  connectedAt?: string;
+  lastSyncAt?: string;
+  scopes: readonly string[];
+};
+
+export type LifecycleState = {
+  paused: boolean;
+  connection: ConnectionState;
+  exportJobs: readonly { id: string; status: string; createdAt: string; files: readonly string[] }[];
+  deletionRequest?: { id: string; status: string; gracePeriodEndsAt: string };
+};
+
+export function getOnboarding(): Promise<OnboardingState> {
+  return request<OnboardingState>("/api/onboarding");
+}
+
+export function advanceOnboarding(
+  stepId: string,
+  status: "in_progress" | "complete" | "skipped" = "complete",
+  metadata?: Record<string, unknown>
+): Promise<OnboardingState> {
+  return request<OnboardingState>("/api/onboarding/advance", {
+    method: "POST",
+    body: JSON.stringify({ stepId, status, metadata }),
+  });
+}
+
+export function resetOnboarding(asNewbie = true): Promise<OnboardingState> {
+  return request<OnboardingState>("/api/onboarding/reset", {
+    method: "POST",
+    body: JSON.stringify({ asNewbie }),
+  });
+}
+
+export function getConnection(): Promise<ConnectionState> {
+  return request<ConnectionState>("/api/connections");
+}
+
+export function connectPayPal(): Promise<ConnectionState> {
+  return request<ConnectionState>("/api/connections/connect", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function getLifecycle(): Promise<LifecycleState> {
+  return request<LifecycleState>("/api/lifecycle");
+}
+
+export function pauseAgent(): Promise<LifecycleState> {
+  return request<LifecycleState>("/api/lifecycle/pause", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function resumeAgent(): Promise<LifecycleState> {
+  return request<LifecycleState>("/api/lifecycle/resume", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function disconnectPayPal(): Promise<LifecycleState> {
+  return request<LifecycleState>("/api/lifecycle/disconnect", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function createExport(): Promise<LifecycleState> {
+  return request<LifecycleState>("/api/lifecycle/export", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function scheduleDeletion(): Promise<LifecycleState> {
+  return request<LifecycleState>("/api/lifecycle/delete", {
+    method: "POST",
+    body: "{}",
+  });
+}
+

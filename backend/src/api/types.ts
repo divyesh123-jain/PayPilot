@@ -64,6 +64,25 @@ export interface OnboardingState {
   readonly currentStep: string;
   readonly steps: readonly { id: string; label: string; status: OnboardingStepStatus; updatedAt: string }[];
   readonly autonomyLevel: "L0" | "L1";
+  readonly completedAt?: string;
+  readonly account?: {
+    email?: string;
+    businessName?: string;
+    businessType?: string;
+    name?: string;
+  };
+  readonly consent?: {
+    granted: boolean;
+    consentedAt?: string;
+    scopes?: readonly string[];
+  };
+  readonly trust?: {
+    policyTemplate?: string;
+    quietHoursStart?: string;
+    quietHoursEnd?: string;
+    timezone?: string;
+    replyToEmail?: string;
+  };
 }
 
 export interface ConnectionState {

@@ -136,13 +136,46 @@ export class PayPilotService {
     };
   }
 
-  public advanceOnboarding(stepId: string, status: "in_progress" | "complete" | "skipped" = "complete"): OnboardingState {
+  public advanceOnboarding(
+    stepId: string,
+    status: "in_progress" | "complete" | "skipped" = "complete",
+    metadata?: Record<string, unknown>
+  ): OnboardingState {
     const step = this.onboardingState.steps.find((candidate) => candidate.id === stepId);
     if (!step) throw new ApiNotFoundError(`Onboarding step ${stepId} was not found`);
     const steps = this.onboardingState.steps.map((candidate) => candidate.id === stepId ? { ...candidate, status, updatedAt: NOW } : candidate);
     const next = steps.find((candidate) => candidate.status === "pending")?.id ?? stepId;
-    this.onboardingState = { ...this.onboardingState, currentStep: next, steps };
+    const isCompleted = steps.every((s) => s.status === "complete" || s.status === "skipped");
+    this.onboardingState = {
+      ...this.onboardingState,
+      currentStep: next,
+      steps,
+      ...(isCompleted ? { completedAt: NOW } : {}),
+      ...(metadata?.account ? { account: { ...this.onboardingState.account, ...(metadata.account as object) } } : {}),
+      ...(metadata?.consent ? { consent: metadata.consent as any } : {}),
+      ...(metadata?.trust ? { trust: metadata.trust as any } : {}),
+    };
     this.appendAudit("onboarding.step_updated", "accepted", "business", this.context.profile.id, { stepId, status });
+    return this.onboardingState;
+  }
+
+  public resetOnboarding(asNewbie = true): OnboardingState {
+    const steps = [
+      { id: "create_account", label: "Create account", status: asNewbie ? "in_progress" : "complete", updatedAt: NOW },
+      { id: "consent", label: "Review data access", status: asNewbie ? "pending" : "complete", updatedAt: NOW },
+      { id: "connect_paypal", label: "Connect PayPal", status: asNewbie ? "pending" : "in_progress", updatedAt: NOW },
+      { id: "backfill", label: "Backfill 90 days", status: "pending", updatedAt: NOW },
+      { id: "baseline", label: "Build baseline", status: "pending", updatedAt: NOW },
+      { id: "trust", label: "Set trust level", status: "pending", updatedAt: NOW },
+      { id: "first_action", label: "Approve first action", status: "pending", updatedAt: NOW },
+    ] as const;
+
+    this.onboardingState = {
+      currentStep: asNewbie ? "create_account" : "connect_paypal",
+      autonomyLevel: "L0",
+      steps,
+    };
+    this.appendAudit("onboarding.reset", "accepted", "business", this.context.profile.id, { asNewbie: String(asNewbie) });
     return this.onboardingState;
   }
 

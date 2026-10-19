@@ -107,13 +107,17 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
     }
     if (url.pathname === "/api/dev/replay" || url.pathname === "/api/dev/replay/state") return sendJson(response, 200, service.replayState());
     if (url.pathname === "/api/dev/reset" || url.pathname === "/api/dev/replay/reset") return sendJson(response, 200, service.resetState());
+    if (url.pathname === "/api/onboarding/reset") {
+      const asNewbie = body.asNewbie !== false;
+      return sendJson(response, 200, service.resetOnboarding(asNewbie));
+    }
     if (url.pathname === "/api/onboarding" || url.pathname === "/api/onboarding/advance") {
       const stepId = requiredString(body.stepId, "stepId");
       const status = body.status === undefined ? "complete" : requiredString(body.status, "status");
       if (status !== "in_progress" && status !== "complete" && status !== "skipped") throw new Error("status must be in_progress, complete, or skipped");
-      return sendJson(response, 200, service.advanceOnboarding(stepId, status));
+      return sendJson(response, 200, service.advanceOnboarding(stepId, status, body.metadata as Record<string, unknown> | undefined));
     }
-    if (url.pathname === "/api/connections/paypal/connect") return sendJson(response, 200, service.connectPayPal());
+    if (url.pathname === "/api/connections/paypal/connect" || url.pathname === "/api/connections/connect") return sendJson(response, 200, service.connectPayPal());
     if (url.pathname === "/api/connections/paypal/disconnect" || url.pathname === "/api/lifecycle/disconnect") return sendJson(response, 200, service.disconnectPayPal());
     if (url.pathname === "/api/lifecycle/pause") return sendJson(response, 200, service.pauseAgent());
     if (url.pathname === "/api/lifecycle/resume") return sendJson(response, 200, service.resumeAgent());

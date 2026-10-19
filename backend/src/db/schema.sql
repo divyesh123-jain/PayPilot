@@ -122,3 +122,103 @@ CREATE TABLE IF NOT EXISTS approval_requests (
 
 CREATE INDEX IF NOT EXISTS approval_requests_business_status_idx
   ON approval_requests (business_id, status, created_at DESC);
+
+-- ============================================================================
+-- Part 2 Lifecycle, Onboarding, Multi-tenant Identity & Connection Tables
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS memberships (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  business_id TEXT NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('owner', 'operator', 'accountant')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, business_id)
+);
+
+CREATE TABLE IF NOT EXISTS connections (
+  id TEXT PRIMARY KEY,
+  business_id TEXT NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL DEFAULT 'paypal',
+  status TEXT NOT NULL CHECK (status IN ('active', 'needs_reauth', 'revoked', 'disconnected')),
+  encrypted_token TEXT,
+  scopes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  last_sync_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (business_id, provider)
+);
+
+CREATE TABLE IF NOT EXISTS onboarding_state (
+  id TEXT PRIMARY KEY,
+  business_id TEXT NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+  current_step TEXT NOT NULL,
+  steps JSONB NOT NULL DEFAULT '[]'::jsonb,
+  completed_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (business_id)
+);
+
+CREATE TABLE IF NOT EXISTS backfill_runs (
+  id TEXT PRIMARY KEY,
+  business_id TEXT NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+  window_start TIMESTAMPTZ NOT NULL,
+  window_end TIMESTAMPTZ NOT NULL,
+  rows_loaded INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL CHECK (status IN ('running', 'complete', 'failed')),
+  error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS notification_prefs (
+  id TEXT PRIMARY KEY,
+  business_id TEXT NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+  channels JSONB NOT NULL DEFAULT '["email"]'::jsonb,
+  quiet_hours JSONB NOT NULL DEFAULT '{"start":"22:00","end":"08:00"}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (business_id)
+);
+
+CREATE TABLE IF NOT EXISTS notification_outbox (
+  id TEXT PRIMARY KEY,
+  business_id TEXT NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+  channel TEXT NOT NULL DEFAULT 'email',
+  payload JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'sent', 'failed')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_retry_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS notification_outbox_queue_idx
+  ON notification_outbox (status, next_retry_at) WHERE status = 'queued';
+
+CREATE TABLE IF NOT EXISTS consents (
+  id TEXT PRIMARY KEY,
+  business_id TEXT NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+  permission_list JSONB NOT NULL,
+  consent_version TEXT NOT NULL,
+  consented_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS export_jobs (
+  id TEXT PRIMARY KEY,
+  business_id TEXT NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('queued', 'processing', 'completed', 'failed')),
+  files JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS deletion_requests (
+  id TEXT PRIMARY KEY,
+  business_id TEXT NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('scheduled', 'cancelled', 'completed')),
+  grace_period_ends_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

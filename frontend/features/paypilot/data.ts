@@ -606,12 +606,14 @@ export const businessOptions: { key: BusinessKey; label: string }[] = [
 
 export const navItems: { key: ViewKey; label: string }[] = [
   { key: "inbox", label: "Inbox" },
+  { key: "clients", label: "Clients" },
   { key: "transactions", label: "Transactions" },
   { key: "ask", label: "Ask PayPilot" },
   { key: "forecast", label: "Forecast" },
   { key: "risk", label: "Risk" },
   { key: "policies", label: "Policies" },
   { key: "workflows", label: "Workflows" },
+  { key: "sent", label: "Sent" },
   { key: "audit", label: "Audit log" },
 ];
 

@@ -6,16 +6,21 @@ import { NotificationDrawer, BusinessContext, Topbar } from "@/frontend/componen
 import { ApprovalDrawer } from "@/frontend/components/layout/approval-drawer";
 import { Sidebar } from "@/frontend/components/layout/sidebar";
 import { InboxView, approvalItem, type ApprovalItem } from "@/frontend/features/paypilot/views/inbox-view";
+import { ClientsView } from "@/frontend/features/paypilot/views/clients-view";
 import { AgentView } from "@/frontend/features/paypilot/views/agent-view";
 import { TransactionsView } from "@/frontend/features/paypilot/views/transactions-view";
 import { PoliciesView } from "@/frontend/features/paypilot/views/policies-view";
 import { WorkflowsView } from "@/frontend/features/paypilot/views/workflows-view";
 import { ForecastView } from "@/frontend/features/paypilot/views/forecast-view";
 import { RiskView } from "@/frontend/features/paypilot/views/risk-view";
+import { SentView } from "@/frontend/features/paypilot/views/sent-view";
 import { AuditView } from "@/frontend/features/paypilot/views/audit-view";
 import { WhatIfDialog } from "@/frontend/features/paypilot/components/what-if-dialog";
+import { OnboardingModal } from "@/frontend/features/paypilot/components/onboarding-modal";
+import { SettingsDialog } from "@/frontend/features/paypilot/components/settings-dialog";
 import { businessProfiles } from "@/frontend/features/paypilot/data";
 import type { BusinessKey, ViewKey } from "@/frontend/features/paypilot/types";
+import { Sparkles } from "lucide-react";
 import {
   approveProposal,
   getAuditEvents,
@@ -26,6 +31,7 @@ import {
   getProposals,
   getTransactions,
   rejectProposal,
+  resetOnboarding,
   setBusinessSession,
   simulateReminder,
   subscribeEventStream,
@@ -44,6 +50,9 @@ export default function PayPilotApp() {
   const [approval, setApproval] = useState<ApprovalItem | null>(null);
   const [approved, setApproved] = useState(false);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [syncLabel, setSyncLabel] = useState("Local replay ready");
   const [proposalId, setProposalId] = useState<string | null>(null);
   const [remoteTransactions, setRemoteTransactions] = useState<ApiTransaction[] | null>(null);
@@ -105,6 +114,31 @@ export default function PayPilotApp() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isCompleted = localStorage.getItem("paypilot_onboarding_completed") === "true";
+      setOnboardingCompleted(isCompleted);
+      if (!isCompleted) {
+        setOnboardingOpen(true);
+      }
+    }
+  }, []);
+
+  const handleResetAsNewbie = async () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("paypilot_onboarding_completed");
+      localStorage.removeItem("paypilot_onboarding_v2");
+    }
+    try {
+      await resetOnboarding(true);
+    } catch {
+      // offline fallback
+    }
+    setOnboardingCompleted(false);
+    setOnboardingOpen(true);
+    setSyncLabel("Onboarding reset · Newbie mode active");
+  };
 
   const handleBusinessChange = (nextKey: BusinessKey) => {
     setBusinessKey(nextKey);
@@ -183,6 +217,8 @@ export default function PayPilotApp() {
         activeView={activeView}
         onBusinessChange={handleBusinessChange}
         onNavigate={setActiveView}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenOnboarding={() => setOnboardingOpen(true)}
       />
       <div className="main-shell">
         <Topbar
@@ -191,6 +227,43 @@ export default function PayPilotApp() {
           onAlertsToggle={() => setAlertsOpen((open) => !open)}
           syncLabel={syncLabel}
         />
+        {!onboardingCompleted && !onboardingOpen && (
+          <div
+            style={{
+              background: "linear-gradient(90deg, #eef2ff 0%, #f5f3ff 100%)",
+              borderBottom: "1px solid #c7d2fe",
+              padding: "10px 24px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              fontSize: "12px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#3730a3" }}>
+              <Sparkles size={15} color="#6366f1" />
+              <span>
+                <strong>Newbie Onboarding in Progress:</strong> You're new to PayPilot! Resume the 7-step onboarding flow to finalize your PayPal baseline and safe reminders.
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button
+                onClick={() => setOnboardingOpen(true)}
+                style={{
+                  background: "#4f46e5",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "5px 12px",
+                  fontWeight: 600,
+                  fontSize: "11px",
+                  cursor: "pointer",
+                }}
+              >
+                Resume Onboarding Flow →
+              </button>
+            </div>
+          </div>
+        )}
         <AnimatePresence>
           {alertsOpen && <NotificationDrawer onClose={() => setAlertsOpen(false)} />}
         </AnimatePresence>
@@ -219,6 +292,7 @@ export default function PayPilotApp() {
                 onOpenApproval={openApproval}
               />
             )}
+            {activeView === "clients" && <ClientsView />}
             {activeView === "transactions" && (
               <TransactionsView business={business} remoteTransactions={remoteTransactions} loading={remoteLoading} error={remoteError} />
             )}
@@ -231,6 +305,7 @@ export default function PayPilotApp() {
             )}
             {activeView === "policies" && <PoliciesView policy={remotePolicy} loading={remoteLoading} error={remoteError} onPolicySaved={setRemotePolicy} />}
             {activeView === "workflows" && <WorkflowsView />}
+            {activeView === "sent" && <SentView />}
             {activeView === "audit" && <AuditView events={remoteAuditEvents} loading={remoteLoading} error={remoteError} />}
           </motion.div>
         </AnimatePresence>
@@ -255,6 +330,24 @@ export default function PayPilotApp() {
           }}
         />
       )}
+      <OnboardingModal
+        isOpen={onboardingOpen}
+        businessKey={businessKey}
+        onBusinessChange={handleBusinessChange}
+        onOpenApproval={openApproval}
+        onClose={() => setOnboardingOpen(false)}
+        onComplete={() => {
+          setOnboardingCompleted(true);
+          setSyncLabel("Onboarding complete · Active");
+          void loadRemoteData();
+        }}
+      />
+      <SettingsDialog
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onOpenOnboarding={() => setOnboardingOpen(true)}
+        onResetAsNewbie={handleResetAsNewbie}
+      />
     </main>
   );
 }

@@ -12,6 +12,8 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Users,
+  MailCheck,
   Workflow,
   Zap,
 } from "lucide-react";
@@ -23,12 +25,14 @@ import type { BusinessKey, ViewKey } from "@/frontend/features/paypilot/types";
 
 const navIcons = {
   inbox: ClipboardList,
+  clients: Users,
   transactions: ReceiptText,
   ask: MessageCircleQuestion,
   forecast: LineChart,
   risk: Radar,
   policies: ShieldCheck,
   workflows: Workflow,
+  sent: MailCheck,
   audit: Clock3,
 };
 
@@ -38,12 +42,16 @@ export function Sidebar({
   activeView,
   onBusinessChange,
   onNavigate,
+  onOpenSettings,
+  onOpenOnboarding,
 }: {
   businessKey: BusinessKey;
   profile: { name: string; type: string; initials: string; accent: string };
   activeView: ViewKey;
   onBusinessChange: (value: BusinessKey) => void;
   onNavigate: (view: ViewKey) => void;
+  onOpenSettings?: () => void;
+  onOpenOnboarding?: () => void;
 }) {
   return (
     <aside className="sidebar">
@@ -119,11 +127,15 @@ export function Sidebar({
           <span className="agent-stack-label">3 agents</span>
         </div>
       </div>
-      <button className="nav-item settings-link">
-        <Settings size={17} />
-        <span>Settings</span>
+      <button className="nav-item onboarding-link" onClick={onOpenOnboarding} style={{ marginTop: "8px" }}>
+        <Sparkles size={17} color="#6366f1" />
+        <span style={{ fontWeight: 600, color: "#4f46e5" }}>Onboarding Wizard</span>
       </button>
-      <div className="profile-row">
+      <button className="nav-item settings-link" onClick={onOpenSettings}>
+        <Settings size={17} />
+        <span>Settings & Lifecycle</span>
+      </button>
+      <div className="profile-row" onClick={onOpenSettings} style={{ cursor: "pointer" }} role="button" tabIndex={0}>
         <div className="profile-avatar">AM</div>
         <div>
           <strong>Alex Morgan</strong>
