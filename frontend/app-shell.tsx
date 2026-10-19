@@ -18,6 +18,9 @@ import { AuditView } from "@/frontend/features/paypilot/views/audit-view";
 import { WhatIfDialog } from "@/frontend/features/paypilot/components/what-if-dialog";
 import { OnboardingModal } from "@/frontend/features/paypilot/components/onboarding-modal";
 import { SettingsDialog } from "@/frontend/features/paypilot/components/settings-dialog";
+import { LandingPage } from "@/frontend/features/landing/landing-page";
+import { SignInModal } from "@/frontend/features/auth/sign-in-modal";
+import { WelcomeModal } from "@/frontend/features/auth/welcome-modal";
 import { businessProfiles } from "@/frontend/features/paypilot/data";
 import type { BusinessKey, ViewKey } from "@/frontend/features/paypilot/types";
 import { Sparkles } from "lucide-react";
@@ -44,6 +47,18 @@ import {
 } from "@/frontend/lib/api";
 
 export default function PayPilotApp() {
+  const [pageMode, setPageMode] = useState<"landing" | "dashboard">("landing");
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [signupPreset, setSignupPreset] = useState<BusinessKey>("freelancer");
+  const [currentUser, setCurrentUser] = useState<{
+    name: string;
+    email: string;
+    businessName: string;
+    businessKey: BusinessKey;
+    isAuthenticated: boolean;
+  } | null>(null);
+
   const [businessKey, setBusinessKey] = useState<BusinessKey>("freelancer");
   const [activeView, setActiveView] = useState<ViewKey>("inbox");
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -117,13 +132,104 @@ export default function PayPilotApp() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
+      try {
+        const savedSession = localStorage.getItem("paypilot_user_session");
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          if (parsed && parsed.isAuthenticated) {
+            setCurrentUser(parsed);
+            if (parsed.businessKey) {
+              setBusinessKey(parsed.businessKey);
+            }
+          }
+        }
+      } catch {
+        // storage fallback
+      }
       const isCompleted = localStorage.getItem("paypilot_onboarding_completed") === "true";
       setOnboardingCompleted(isCompleted);
-      if (!isCompleted) {
-        setOnboardingOpen(true);
-      }
     }
   }, []);
+
+  const handleOpenSignUp = (preset?: BusinessKey) => {
+    if (preset) {
+      setSignupPreset(preset);
+      setBusinessKey(preset);
+    }
+    setOnboardingOpen(true);
+    setSignInOpen(false);
+  };
+
+  const handleOpenSignIn = () => {
+    setSignInOpen(true);
+    setOnboardingOpen(false);
+  };
+
+  const handleSignInSuccess = (user: {
+    name: string;
+    email: string;
+    businessName: string;
+    businessKey: BusinessKey;
+  }) => {
+    const session = { ...user, isAuthenticated: true };
+    setCurrentUser(session);
+    try {
+      localStorage.setItem("paypilot_user_session", JSON.stringify(session));
+      localStorage.setItem("paypilot_onboarding_completed", "true");
+    } catch {
+      // storage
+    }
+    setOnboardingCompleted(true);
+    setBusinessKey(user.businessKey);
+    setPageMode("dashboard");
+    setWelcomeOpen(true);
+    void setBusinessSession(user.businessKey);
+    void loadRemoteData();
+  };
+
+  const handleOnboardingComplete = (userInfo?: {
+    name: string;
+    email: string;
+    businessName: string;
+    businessKey: BusinessKey;
+  }) => {
+    const user = userInfo || {
+      name: "Alex Morgan",
+      email: "alex@morgancreative.agency",
+      businessName: "Morgan Creative Studio",
+      businessKey,
+    };
+    const session = { ...user, isAuthenticated: true };
+    setCurrentUser(session);
+    try {
+      localStorage.setItem("paypilot_user_session", JSON.stringify(session));
+      localStorage.setItem("paypilot_onboarding_completed", "true");
+    } catch {
+      // storage
+    }
+    setOnboardingCompleted(true);
+    setBusinessKey(user.businessKey);
+    setPageMode("dashboard");
+    setWelcomeOpen(true);
+    setSyncLabel("Onboarding complete · Active");
+    void loadRemoteData();
+  };
+
+  const handleSignOut = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("paypilot_user_session");
+    }
+    setCurrentUser(null);
+    setPageMode("landing");
+  };
+
+  const handleGoToLanding = () => {
+    setPageMode("landing");
+  };
+
+  const handleEnterDashboard = () => {
+    setPageMode("dashboard");
+  };
 
   const handleResetAsNewbie = async () => {
     if (typeof window !== "undefined") {
@@ -209,16 +315,48 @@ export default function PayPilotApp() {
   };
   const goAsk = () => setActiveView("ask");
 
+  if (pageMode === "landing") {
+    return (
+      <>
+        <LandingPage
+          onOpenSignIn={handleOpenSignIn}
+          onOpenSignUp={handleOpenSignUp}
+          onEnterDashboard={handleEnterDashboard}
+          isAuthenticated={!!currentUser?.isAuthenticated}
+          currentUser={currentUser || undefined}
+        />
+        <SignInModal
+          isOpen={signInOpen}
+          onClose={() => setSignInOpen(false)}
+          onSuccess={handleSignInSuccess}
+          onSwitchToSignUp={handleOpenSignUp}
+        />
+        <OnboardingModal
+          isOpen={onboardingOpen}
+          businessKey={businessKey}
+          initialPreset={signupPreset}
+          onBusinessChange={handleBusinessChange}
+          onOpenApproval={openApproval}
+          onClose={() => setOnboardingOpen(false)}
+          onComplete={handleOnboardingComplete}
+        />
+      </>
+    );
+  }
+
   return (
     <main className="app-shell">
       <Sidebar
         businessKey={businessKey}
         profile={business}
         activeView={activeView}
+        userName={currentUser?.name}
         onBusinessChange={handleBusinessChange}
         onNavigate={setActiveView}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenOnboarding={() => setOnboardingOpen(true)}
+        onGoToLanding={handleGoToLanding}
+        onSignOut={handleSignOut}
       />
       <div className="main-shell">
         <Topbar
@@ -226,6 +364,7 @@ export default function PayPilotApp() {
           alertsOpen={alertsOpen}
           onAlertsToggle={() => setAlertsOpen((open) => !open)}
           syncLabel={syncLabel}
+          onGoToLanding={handleGoToLanding}
         />
         {!onboardingCompleted && !onboardingOpen && (
           <div
@@ -330,17 +469,32 @@ export default function PayPilotApp() {
           }}
         />
       )}
+      <WelcomeModal
+        isOpen={welcomeOpen}
+        onClose={() => setWelcomeOpen(false)}
+        userName={currentUser?.name || business.name}
+        businessName={currentUser?.businessName || business.name}
+        businessKey={businessKey}
+        onOpenFirstProposal={() => {
+          setActiveView("inbox");
+          openApproval(approvalItem);
+        }}
+        onExploreDashboard={() => setWelcomeOpen(false)}
+      />
+      <SignInModal
+        isOpen={signInOpen}
+        onClose={() => setSignInOpen(false)}
+        onSuccess={handleSignInSuccess}
+        onSwitchToSignUp={handleOpenSignUp}
+      />
       <OnboardingModal
         isOpen={onboardingOpen}
         businessKey={businessKey}
+        initialPreset={signupPreset}
         onBusinessChange={handleBusinessChange}
         onOpenApproval={openApproval}
         onClose={() => setOnboardingOpen(false)}
-        onComplete={() => {
-          setOnboardingCompleted(true);
-          setSyncLabel("Onboarding complete · Active");
-          void loadRemoteData();
-        }}
+        onComplete={handleOnboardingComplete}
       />
       <SettingsDialog
         isOpen={settingsOpen}

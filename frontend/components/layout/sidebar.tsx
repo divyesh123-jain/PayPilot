@@ -16,6 +16,8 @@ import {
   MailCheck,
   Workflow,
   Zap,
+  Home,
+  LogOut,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Avatar } from "@/frontend/components/ui/avatar";
@@ -40,18 +42,24 @@ export function Sidebar({
   businessKey,
   profile,
   activeView,
+  userName,
   onBusinessChange,
   onNavigate,
   onOpenSettings,
   onOpenOnboarding,
+  onGoToLanding,
+  onSignOut,
 }: {
   businessKey: BusinessKey;
   profile: { name: string; type: string; initials: string; accent: string };
   activeView: ViewKey;
+  userName?: string;
   onBusinessChange: (value: BusinessKey) => void;
   onNavigate: (view: ViewKey) => void;
   onOpenSettings?: () => void;
   onOpenOnboarding?: () => void;
+  onGoToLanding?: () => void;
+  onSignOut?: () => void;
 }) {
   return (
     <aside className="sidebar">
@@ -135,13 +143,56 @@ export function Sidebar({
         <Settings size={17} />
         <span>Settings & Lifecycle</span>
       </button>
-      <div className="profile-row" onClick={onOpenSettings} style={{ cursor: "pointer" }} role="button" tabIndex={0}>
-        <div className="profile-avatar">AM</div>
-        <div>
-          <strong>Alex Morgan</strong>
-          <span>Owner</span>
+      {onGoToLanding && (
+        <button
+          className="nav-item"
+          onClick={onGoToLanding}
+          style={{ color: "#4b5563" }}
+          title="Return to Landing Page"
+        >
+          <Home size={17} />
+          <span>Landing Page</span>
+        </button>
+      )}
+      <div className="profile-row" style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div onClick={onOpenSettings} style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+          <div className="profile-avatar">
+            {userName
+              ? userName
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()
+              : "AM"}
+          </div>
+          <div style={{ minWidth: 0, overflow: "hidden" }}>
+            <strong style={{ display: "block", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+              {userName || "Alex Morgan"}
+            </strong>
+            <span>{profile.type}</span>
+          </div>
         </div>
-        <Settings size={15} />
+        {onSignOut && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSignOut();
+            }}
+            title="Sign Out"
+            style={{
+              background: "none",
+              border: "none",
+              color: "#9ca3af",
+              cursor: "pointer",
+              padding: "4px",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <LogOut size={15} />
+          </button>
+        )}
       </div>
     </aside>
   );

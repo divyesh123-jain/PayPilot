@@ -102,6 +102,9 @@ export function OnboardingModal({
   isOpen,
   onClose,
   businessKey,
+  initialPreset,
+  initialEmail,
+  initialName,
   onBusinessChange,
   onComplete,
   onOpenApproval,
@@ -109,8 +112,16 @@ export function OnboardingModal({
   isOpen: boolean;
   onClose: () => void;
   businessKey: BusinessKey;
+  initialPreset?: BusinessKey;
+  initialEmail?: string;
+  initialName?: string;
   onBusinessChange?: (key: BusinessKey) => void;
-  onComplete: () => void;
+  onComplete: (user?: {
+    name: string;
+    email: string;
+    businessName: string;
+    businessKey: BusinessKey;
+  }) => void;
   onOpenApproval?: (item: ApprovalItem) => void;
 }) {
   const steps = [
@@ -127,12 +138,12 @@ export function OnboardingModal({
   const [stepIndex, setStepIndex] = useState(0);
 
   // Step 1: Account
-  const [email, setEmail] = useState("alex@morgancreative.agency");
+  const [email, setEmail] = useState(initialEmail || "alex@morgancreative.agency");
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [emailVerified, setEmailVerified] = useState(true);
-  const [name, setName] = useState("Alex Morgan");
+  const [name, setName] = useState(initialName || "Alex Morgan");
   const [businessName, setBusinessName] = useState("Morgan Creative Studio");
-  const [selectedPreset, setSelectedPreset] = useState<BusinessKey>(businessKey);
+  const [selectedPreset, setSelectedPreset] = useState<BusinessKey>(initialPreset || businessKey);
 
   // Step 2: Consent
   const [consentGranted, setConsentGranted] = useState(true);
@@ -198,6 +209,34 @@ export function OnboardingModal({
       // ignore parse errors
     }
   }, []);
+
+  // Update preset if passed explicitly from landing page
+  useEffect(() => {
+    if (initialPreset && isOpen) {
+      setSelectedPreset(initialPreset);
+      if (initialPreset === "saas") {
+        setName((prev) => prev === "Alex Morgan" ? "Liam Chen" : prev);
+        setEmail((prev) => prev === "alex@morgancreative.agency" ? "liam@pulsemetrics.io" : prev);
+        setBusinessName((prev) => prev === "Morgan Creative Studio" ? "PulseMetrics SaaS" : prev);
+      } else if (initialPreset === "ecommerce") {
+        setName((prev) => prev === "Alex Morgan" ? "Nora Blake" : prev);
+        setEmail((prev) => prev === "alex@morgancreative.agency" ? "nora@drifttide.com" : prev);
+        setBusinessName((prev) => prev === "Morgan Creative Studio" ? "Drift & Tide Co." : prev);
+      } else if (initialPreset === "agency") {
+        setName((prev) => prev === "Alex Morgan" ? "Maya Patel" : prev);
+        setEmail((prev) => prev === "alex@morgancreative.agency" ? "maya@northstar.agency" : prev);
+        setBusinessName((prev) => prev === "Morgan Creative Studio" ? "NorthStar Agency" : prev);
+      } else if (initialPreset === "service") {
+        setName((prev) => prev === "Alex Morgan" ? "Carlos Silva" : prev);
+        setEmail((prev) => prev === "alex@morgancreative.agency" ? "carlos@silvahvac.com" : prev);
+        setBusinessName((prev) => prev === "Morgan Creative Studio" ? "Silva Home & HVAC" : prev);
+      } else if (initialPreset === "creator") {
+        setName((prev) => prev === "Alex Morgan" ? "Zoe Rivera" : prev);
+        setEmail((prev) => prev === "alex@morgancreative.agency" ? "zoe@creatoracademy.com" : prev);
+        setBusinessName((prev) => prev === "Morgan Creative Studio" ? "The Creator Deck" : prev);
+      }
+    }
+  }, [initialPreset, isOpen]);
 
   // Save state on any change
   useEffect(() => {
@@ -279,10 +318,25 @@ export function OnboardingModal({
   const handleCompleteWizard = () => {
     try {
       localStorage.setItem(COMPLETED_KEY, "true");
+      localStorage.setItem(
+        "paypilot_user_session",
+        JSON.stringify({
+          name,
+          email,
+          businessName,
+          businessKey: selectedPreset,
+          isAuthenticated: true,
+        })
+      );
     } catch {
       // storage error
     }
-    onComplete();
+    onComplete({
+      name,
+      email,
+      businessName,
+      businessKey: selectedPreset,
+    });
     onClose();
     if (onOpenApproval) {
       onOpenApproval(approvalItem);

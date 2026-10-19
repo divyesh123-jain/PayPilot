@@ -11,11 +11,13 @@ export function Topbar({
   alertsOpen,
   onAlertsToggle,
   syncLabel = "Synced just now",
+  onGoToLanding,
 }: {
   activeView: ViewKey;
   alertsOpen: boolean;
   onAlertsToggle: () => void;
   syncLabel?: string;
+  onGoToLanding?: () => void;
 }) {
   const title = navItems.find((item) => item.key === activeView)?.label ?? "Overview";
   return (
@@ -26,6 +28,16 @@ export function Topbar({
         <strong>{title}</strong>
       </div>
       <div className="topbar-actions">
+        {onGoToLanding && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onGoToLanding}
+            className="text-[11px] font-semibold text-gray-600 hover:text-gray-900 border-gray-200"
+          >
+            ← Landing Page
+          </Button>
+        )}
         <Button variant="icon" className="search-btn" aria-label="Search">
           <Search size={18} />
         </Button>
