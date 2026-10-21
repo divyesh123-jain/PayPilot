@@ -1,11 +1,12 @@
 # PayPilot
 
-PayPilot is a permission-first payment intelligence workspace for PayPal merchants. The repository contains a deterministic demo product plus a dependency-light TypeScript API: the agent proposes, the policy engine decides, and a human approval record gates every payment action.
+PayPilot is a permission-first payment intelligence workspace for PayPal merchants. The product starts with an empty workspace, connects to a merchant account during onboarding, and only surfaces account-backed insights: the agent proposes, the policy engine decides, and a human approval record gates every payment action.
 
 ## Run the product locally
 
-The repository is pinned to Node `20.17.0` in `.nvmrc`. The default `mock` payment mode is
-offline and deterministic; no PayPal or AI credentials are needed for the demo.
+The repository is pinned to Node `20.17.0` in `.nvmrc`. The default `mock` payment adapter is
+offline and is used for development and tests; the runtime service starts with no merchant records.
+Configure live PayPal credentials when you want real account data.
 
 ```bash
 cd backend
@@ -21,7 +22,7 @@ npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The UI connects to `http://localhost:8080` when the API is available and falls back to the deterministic local replay surface when it is not. Set `NEXT_PUBLIC_PAYPILOT_API_URL` to use another API URL.
+Open [http://localhost:3000](http://localhost:3000). The UI connects to `http://localhost:8080` when the API is available and shows an honest empty state when it is not. Set `NEXT_PUBLIC_PAYPILOT_API_URL` to use another API URL.
 
 ### One-command Docker setup
 
@@ -29,10 +30,9 @@ Open [http://localhost:3000](http://localhost:3000). The UI connects to `http://
 docker compose up --build
 ```
 
-This starts the web app at `http://localhost:3000`, the mock API at `http://localhost:8080`,
-and a PostgreSQL 16 service for the portable schema. The current offline demo intentionally
-keeps runtime state in memory so it remains usable without migrations or credentials; the SQL
-schema is ready for the production persistence adapter.
+This starts the web app at `http://localhost:3000`, the development API at `http://localhost:8080`,
+and a PostgreSQL 16 service for the portable schema. The local API starts with an empty workspace
+so no synthetic customer or payment records appear in the product.
 
 ## Backend domain layer
 
@@ -72,7 +72,7 @@ frontend/
 │   ├── layout/                   # sidebar, topbar, notifications, context bar
 │   └── ui/                       # shadcn-style Button, Card, Dialog, Switch, Table, etc.
 ├── features/paypilot/
-│   ├── data.ts                   # deterministic demo scenarios
+│   ├── data.ts                   # product configuration and empty workspace states
 │   ├── types.ts                  # product domain types
 │   └── views/                    # inbox, transactions, ask, forecast, risk, policies, workflows, audit
 ├── lib/api.ts                    # backend connection and proposal lifecycle
@@ -86,12 +86,12 @@ The UI primitives follow the shadcn/ui composition pattern and use Radix primiti
 
 - Switch between six business contexts: freelancer, e-commerce, SaaS, agency, service business, and creator.
 - Review the Agent Inbox with proactive alerts, approval drawers, blocked-policy states, and agent activity.
-- Explore sandbox transaction records with search and status filters.
+- Explore connected transaction records with search and status filters.
 - Toggle runtime permission policies and draft a policy in natural language. Policy checks run
   before proposal creation, again at approval, and again immediately before execution.
 - Parse and schedule a recurring workflow from a plain-English instruction.
 - Ask the Scout / Strategist / Executor team questions in Ask PayPilot with tool traces.
-- Run the collection what-if simulator and compare deterministic expected value.
+- Run the collection what-if simulator once enough connected history is available.
 - Review the audit timeline and verify the backend's append-only SHA-256 hash chain.
 - Exercise onboarding, PayPal connection state, pause/disconnect/export/delete lifecycle, and
   notification read APIs from the API surface.
@@ -110,10 +110,13 @@ The single offline verification command is:
 make test
 ```
 
-It runs the backend build and 23 Node tests, then the frontend TypeScript check. For a full
+It runs the backend build and 24 Node tests, then the frontend TypeScript check. For a full
 production-style build run `make build`.
 
-The current UI uses seeded scenario data so every demo path is deterministic and works without credentials. The API exposes replayable webhook ingestion, policy-protected proposal execution, SSE, and live PayPal adapter seams. PostgreSQL persistence and background scheduling remain explicit deployment work rather than hidden demo behavior; see `docs/ARCHITECTURE.md`.
+The default runtime starts with no seeded customer or payment data. Deterministic fixtures remain
+isolated to backend tests and explicit development replay routes. The API exposes webhook ingestion,
+policy-protected proposal execution, SSE, and live PayPal adapter seams. PostgreSQL persistence and
+background scheduling remain explicit deployment work; see `docs/ARCHITECTURE.md`.
 
 ## Deploy on Render
 

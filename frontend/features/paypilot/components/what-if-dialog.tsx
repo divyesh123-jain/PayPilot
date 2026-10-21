@@ -19,14 +19,49 @@ export function WhatIfDialog({
   const scenario = getWhatIfScenario(businessKey);
   const [remote, setRemote] = useState<ApiWhatIfSimulation["simulation"] | null>(null);
   useEffect(() => {
+    if (!scenario) return;
     void simulateWhatIf({
       amountCents: Math.round(scenario.outstanding * 100),
       discountPct: scenario.discount,
       waitProbability: scenario.waitProbability,
       waitDays: scenario.waitDays,
-    }).then((result) => setRemote(result.simulation)).catch(() => setRemote(null));
+    })
+      .then((result) => setRemote(result.simulation))
+      .catch(() => setRemote(null));
   }, [scenario]);
-  const fastOutcome = (remote?.acceptEvCents ?? Math.round(scenario.outstanding * (1 - scenario.discount / 100) * 100)) / 100;
+  if (!scenario) {
+    return (
+      <div
+        className="what-if-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="What-if scenario"
+      >
+        <div className="what-if-dialog">
+          <button className="what-if-close" onClick={onClose} aria-label="Close">
+            <X size={17} />
+          </button>
+          <span className="eyebrow">DECISION LAB</span>
+          <h2>Connect data before running a scenario</h2>
+          <p>
+            PayPilot will enable what-if analysis after it has enough real payment history to make
+            the comparison meaningful.
+          </p>
+          <div className="modal-actions">
+            <Button variant="secondary" onClick={onClose}>
+              Close
+            </Button>
+            <Button onClick={onAsk}>
+              Ask PayPilot <span>→</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  const fastOutcome =
+    (remote?.acceptEvCents ??
+      Math.round(scenario.outstanding * (1 - scenario.discount / 100) * 100)) / 100;
   const waitOutcome = (remote?.waitEvCents ?? Math.round(scenario.waitOutcome * 100)) / 100;
   return (
     <div className="what-if-overlay" role="dialog" aria-modal="true" aria-label="What-if scenario">
@@ -72,7 +107,10 @@ export function WhatIfDialog({
             <Check size={13} />
           </span>
           <p>
-             <strong>Strategist recommends the {remote?.recommendation === "wait" ? "wait" : "fast"} path.</strong> {scenario.recommendation}
+            <strong>
+              Strategist recommends the {remote?.recommendation === "wait" ? "wait" : "fast"} path.
+            </strong>{" "}
+            {scenario.recommendation}
           </p>
         </div>
         <div className="modal-actions">

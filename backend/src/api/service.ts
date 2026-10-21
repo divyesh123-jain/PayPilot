@@ -27,6 +27,8 @@ export interface ServiceOptions {
   readonly context?: BusinessContext;
   readonly policy?: PolicySet;
   readonly scenarioId?: string;
+  /** Runtime services start empty; tests can opt into the deterministic fixture set. */
+  readonly seedDemoData?: boolean;
 }
 
 export interface ParsedWorkflow {
@@ -92,7 +94,7 @@ export class PayPilotService {
     ],
   };
   private connectionState: ConnectionState = {
-    id: "connection-demo-paypal",
+    id: "connection-paypal",
     provider: "paypal",
     status: "active",
     scopes: ["transactions.read", "invoices.read", "payments.write"],
@@ -105,17 +107,29 @@ export class PayPilotService {
   private deletionRequest: LifecycleState["deletionRequest"];
 
   public constructor(options: ServiceOptions = {}) {
-    this.context = options.context ?? createSeedContext();
-    this.policy = options.policy ?? SEED_POLICY;
+    const seedDemoData = options.seedDemoData !== false;
+    this.context = options.context ?? (seedDemoData ? createSeedContext() : createEmptyContext());
+    this.policy = options.policy ?? (seedDemoData ? SEED_POLICY : EMPTY_POLICY);
     this.adapter = options.adapter ?? createPaymentAdapter();
-    this.scenarioId = options.scenarioId ?? SEED_SCENARIO_ID;
-    this.notifications.set("notification-reminder-blocked", {
-      id: "notification-reminder-blocked",
-      title: "Third reminder blocked",
-      body: "The permission engine queued the reminder for Monday after the client reached the weekly limit.",
-      severity: "warning",
-      createdAt: NOW,
-    });
+    this.scenarioId = options.scenarioId ?? (seedDemoData ? SEED_SCENARIO_ID : "workspace");
+    if (!seedDemoData) {
+      this.onboardingState = emptyOnboardingState();
+      this.connectionState = {
+        id: "connection-paypal",
+        provider: "paypal",
+        status: "disconnected",
+        scopes: [],
+      };
+      this.paused = true;
+    } else {
+      this.notifications.set("notification-reminder-blocked", {
+        id: "notification-reminder-blocked",
+        title: "Third reminder blocked",
+        body: "The permission engine queued the reminder for Monday after the client reached the weekly limit.",
+        severity: "warning",
+        createdAt: NOW,
+      });
+    }
   }
 
   public get paymentMode(): PaymentMode { return this.adapter.mode; }
@@ -154,6 +168,7 @@ export class PayPilotService {
       ...(metadata?.account ? { account: { ...this.onboardingState.account, ...(metadata.account as object) } } : {}),
       ...(metadata?.consent ? { consent: metadata.consent as any } : {}),
       ...(metadata?.trust ? { trust: metadata.trust as any } : {}),
+      ...(metadata?.notifications ? { notifications: metadata.notifications as any } : {}),
     };
     this.appendAudit("onboarding.step_updated", "accepted", "business", this.context.profile.id, { stepId, status });
     return this.onboardingState;
@@ -206,6 +221,11 @@ export class PayPilotService {
       }
     }
     this.appendAudit("connection.disconnected", "accepted", "business", this.context.profile.id, { provider: "paypal" });
+    this.addNotification({
+      title: "PayPal connection disconnected",
+      body: "PayPilot paused outbound work. Reconnect PayPal before approving new actions.",
+      severity: "critical",
+    });
     return this.lifecycle();
   }
 
@@ -223,8 +243,13 @@ export class PayPilotService {
 
   public scheduleDeletion(): LifecycleState {
     const gracePeriodEndsAt = new Date(Date.parse(NOW) + 14 * 86_400_000).toISOString();
-    this.deletionRequest = { id: "deletion-demo-1", status: "scheduled", gracePeriodEndsAt };
+    this.deletionRequest = { id: "deletion-1", status: "scheduled", gracePeriodEndsAt };
     this.appendAudit("lifecycle.deletion_scheduled", "accepted", "business", this.context.profile.id, { gracePeriodEndsAt });
+    this.addNotification({
+      title: "Workspace deletion scheduled",
+      body: `Your workspace is scheduled for deletion after the grace period ending ${gracePeriodEndsAt}.`,
+      severity: "critical",
+    });
     return this.lifecycle();
   }
 
@@ -235,6 +260,17 @@ export class PayPilotService {
     this.notifications.set(id, updated);
     this.appendAudit("notification.read", "accepted", "notification", id);
     return updated;
+  }
+
+  private addNotification(input: Omit<NotificationItem, "id" | "createdAt" | "readAt">): NotificationItem {
+    const notification: NotificationItem = {
+      ...input,
+      id: `notification-${this.notifications.size + 1}`,
+      createdAt: NOW,
+    };
+    this.notifications.set(notification.id, notification);
+    this.emit("notification.created", notification);
+    return notification;
   }
 
   public setBusinessType(type: BusinessType): SessionResponse {
@@ -279,7 +315,7 @@ export class PayPilotService {
 
   public session(): SessionResponse {
     return {
-      sessionId: "session-demo-0001",
+      sessionId: `session-${this.context.profile.id}`,
       paymentMode: this.adapter.mode,
       scenarioId: this.scenarioId,
       business: {
@@ -320,14 +356,16 @@ export class PayPilotService {
   }
 
   public forecast(input: { openingBalanceCents?: number; horizonDays?: number } = {}): ReturnType<typeof forecastCashFlow> {
-    const openingBalanceCents = input.openingBalanceCents ?? 125000;
+    const openingBalanceCents = input.openingBalanceCents ?? (this.context.transactions.length > 0 ? 125000 : 0);
     return forecastCashFlow({
       asOf: this.context.asOf,
       openingBalanceCents,
       horizonDays: input.horizonDays ?? 14,
       transactions: this.context.transactions,
       comfortBufferCents: this.context.profile.comfortBufferCents,
-      expectedEvents: [{ date: "2026-01-20", amountCents: 12900, label: "Acme Labs subscription", confidence: "expected" }],
+       expectedEvents: this.context.transactions.length > 0
+         ? [{ date: "2026-01-20", amountCents: 12900, label: "Expected account event", confidence: "expected" }]
+         : [],
     });
   }
 
@@ -335,13 +373,26 @@ export class PayPilotService {
     const action = input.action ?? "execute_payment";
     const decision = evaluatePolicy(this.policy, {
       action: action as PolicyAction,
-      subject: { userId: "demo-user", roles: ["operator"] },
+      subject: { userId: "workspace-user", roles: ["operator"] },
       ...(input.amountCents === undefined ? {} : { amountCents: input.amountCents }),
     });
     const proposal = this.makeProposal(action, input, decision);
     this.proposals.set(proposal.id, proposal);
     this.appendAudit("proposal.simulated", "proposed", "approval_request", proposal.id);
-    if (!decision.allowed) this.appendAudit("policy.violation", "rejected", "approval_request", proposal.id, { reason: decision.reason });
+    if (!decision.allowed) {
+      this.appendAudit("policy.violation", "rejected", "approval_request", proposal.id, { reason: decision.reason });
+      this.addNotification({
+        title: "Action blocked by policy",
+        body: `${action.replaceAll("_", " ")} was blocked before any external call. ${decision.reason}`,
+        severity: "warning",
+      });
+    } else if (decision.requiresApproval) {
+      this.addNotification({
+        title: "Approval needed",
+        body: `${action.replaceAll("_", " ")} is ready for review in the decision queue.`,
+        severity: "info",
+      });
+    }
     if (input.discountPct !== undefined) {
       const simulation = simulateDiscount({
         amountCents: input.amountCents ?? 220_000,
@@ -421,7 +472,7 @@ export class PayPilotService {
     if (input.policy) {
       validatePolicySet(input.policy);
       this.policy = {
-        id: "policy-demo-v" + (this.policy.version + 1),
+        id: "policy-v" + (this.policy.version + 1),
         businessId: this.context.profile.id,
         version: this.policy.version + 1,
         rules: input.policy.rules,
@@ -429,7 +480,7 @@ export class PayPilotService {
     } else {
       if (input.text === undefined) throw new Error("policy or text is required");
       this.policy = {
-        id: "policy-demo-v" + (this.policy.version + 1),
+        id: "policy-v" + (this.policy.version + 1),
         businessId: this.context.profile.id,
         version: this.policy.version + 1,
         rules: [parsePolicyText(input.text).rule],
@@ -502,6 +553,11 @@ export class PayPilotService {
     };
     this.webhookReceipts.set(eventId, receipt);
     this.appendAudit("webhook.ingested", "accepted", "notification", eventId, { eventType: receipt.eventType });
+    this.addNotification({
+      title: "PayPal event received",
+      body: `${receipt.eventType} was accepted and is ready for processing.`,
+      severity: "info",
+    });
     this.emit("webhook.ingested", receipt);
     return receipt;
   }
@@ -536,8 +592,9 @@ export class PayPilotService {
     this.webhookReceipts.clear();
     this.audit = new InMemoryAuditEventStore();
     this.chatSequence = 0;
+    this.notifications.clear();
     this.paused = false;
-    this.connectionState = { id: "connection-demo-paypal", provider: "paypal", status: "active", scopes: ["transactions.read", "invoices.read", "payments.write"], connectedAt: NOW, lastSyncAt: NOW };
+    this.connectionState = { id: "connection-paypal", provider: "paypal", status: "active", scopes: ["transactions.read", "invoices.read", "payments.write"], connectedAt: NOW, lastSyncAt: NOW };
     this.exportJobs.clear();
     this.deletionRequest = undefined;
     this.onboardingState = {
@@ -549,7 +606,7 @@ export class PayPilotService {
     return this.session();
   }
 
-  public async agentChat(prompt: string, actor: AgentActor = { userId: "demo-user", roles: ["operator"] }): Promise<{
+  public async agentChat(prompt: string, actor: AgentActor = { userId: "workspace-user", roles: ["operator"] }): Promise<{
     messageId: string;
     answer: string;
     toolTrace: readonly string[];
@@ -568,6 +625,13 @@ export class PayPilotService {
       `${this.context.profile.currency} active balance model`,
     ];
     const proposals: Proposal[] = [];
+
+    if (this.context.transactions.length === 0) {
+      const messageId = `msg-${hash(`${normalized}:${this.chatSequence++}`).slice(0, 16)}`;
+      const answer = "I do not have connected payment records to analyze yet. Connect PayPal and complete the first sync, then ask again.";
+      this.appendAudit("agent.chat", "completed", "agent_run", messageId, { prompt: normalized.slice(0, 100), roles: actor.roles.join(",") });
+      return { messageId, answer, toolTrace: ["Scout: waiting for connected account data"], proposals, citations: [] };
+    }
 
     let answer = "";
     if (/cash|situation|runway|balance|forecast/i.test(normalized)) {
@@ -649,7 +713,7 @@ export class PayPilotService {
   private recheck(proposal: Proposal) {
     return evaluatePolicy(this.policy, {
       action: proposal.action as PolicyAction,
-      subject: { userId: "demo-user", roles: ["operator"] },
+      subject: { userId: "workspace-user", roles: ["operator"] },
       ...(proposal.amountCents === undefined ? {} : { amountCents: proposal.amountCents }),
     });
   }
@@ -676,7 +740,7 @@ export class PayPilotService {
   }
 
   private appendAudit(action: string, outcome: AuditEvent["outcome"], resourceType: AuditEvent["resourceType"], resourceId: string, metadata: Record<string, string> = {}): void {
-    this.audit.append(createAuditEvent({ businessId: this.context.profile.id, actorId: "demo-user", actorType: "user", action, outcome, resourceType, resourceId, occurredAt: NOW, metadata }));
+    this.audit.append(createAuditEvent({ businessId: this.context.profile.id, actorId: "workspace-service", actorType: "system", action, outcome, resourceType, resourceId, occurredAt: NOW, metadata }));
   }
 
   private emit(event: string, data: unknown): void { for (const subscriber of this.subscribers) subscriber(event, data); }
@@ -687,7 +751,55 @@ function hash(value: string): string { return createHash("sha256").update(value)
 export class ApiNotFoundError extends Error { public readonly statusCode = 404; }
 export class ApiConflictError extends Error { public readonly statusCode = 409; }
 
-export function createDefaultService(): PayPilotService { return new PayPilotService({ context: createSeedContext(), policy: SEED_POLICY }); }
+export function createDefaultService(): PayPilotService {
+  return new PayPilotService({ seedDemoData: false, scenarioId: "workspace" });
+}
+
+const EMPTY_POLICY: PolicySet = {
+  id: "policy-workspace-v1",
+  businessId: "business-workspace",
+  version: 1,
+  rules: [
+    {
+      id: "outbound-actions-require-approval",
+      action: "send_reminder",
+      effect: "require_approval",
+      description: "Outbound payment reminders require explicit approval.",
+    },
+  ],
+};
+
+function createEmptyContext(): BusinessContext {
+  return createBusinessContext(
+    {
+      id: "business-workspace",
+      name: "Your workspace",
+      type: "saas",
+      currency: "USD",
+      timezone: "UTC",
+      descriptor: "",
+      comfortBufferCents: 0,
+    },
+    [],
+    NOW,
+  );
+}
+
+function emptyOnboardingState(): OnboardingState {
+  return {
+    currentStep: "create_account",
+    autonomyLevel: "L0",
+    steps: [
+      { id: "create_account", label: "Create account", status: "in_progress", updatedAt: NOW },
+      { id: "consent", label: "Review data access", status: "pending", updatedAt: NOW },
+      { id: "connect_paypal", label: "Connect PayPal", status: "pending", updatedAt: NOW },
+      { id: "backfill", label: "Backfill 90 days", status: "pending", updatedAt: NOW },
+      { id: "baseline", label: "Build baseline", status: "pending", updatedAt: NOW },
+      { id: "trust", label: "Set trust level", status: "pending", updatedAt: NOW },
+      { id: "first_action", label: "Approve first action", status: "pending", updatedAt: NOW },
+    ],
+  };
+}
 
 function validatePolicySet(policy: PolicySet): void {
   if (!Array.isArray(policy.rules)) throw new Error("policy.rules must be an array");

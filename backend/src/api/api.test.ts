@@ -112,8 +112,13 @@ test("extended API supports deterministic what-if, lifecycle, onboarding, and no
 
   const onboarding = await request(base, "/api/onboarding");
   assert.equal(onboarding.status, 200);
-  const advanced = await request(base, "/api/onboarding/advance", { stepId: "connect_paypal", status: "complete" });
+  const advanced = await request(base, "/api/onboarding/advance", {
+    stepId: "connect_paypal",
+    status: "complete",
+    metadata: { notifications: { email: false, inApp: true, dailyDigest: false } },
+  });
   assert.equal(advanced.body.currentStep, "backfill");
+  assert.equal(advanced.body.notifications.email, false);
 
   const paused = await request(base, "/api/lifecycle/pause", {});
   assert.equal(paused.body.paused, true);
@@ -136,6 +141,22 @@ test("audit verification checks the chained hashes, not only stable IDs", () => 
   assert.equal(events[0]?.prevHash, "GENESIS");
   assert.equal(typeof events[0]?.hash, "string");
   assert.deepEqual(service.verifyAudit(), { valid: true, checked: 1, invalidIds: [] });
+});
+
+test("runtime proposals and webhooks create actionable notifications", () => {
+  const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
+  const proposal = service.simulate({ action: "send_reminder", rationale: "Review overdue invoice" });
+  assert.equal(proposal.proposal.status, "proposed");
+  const approvalNotification = service.notificationsList().find((notification) => notification.title === "Approval needed");
+  assert.ok(approvalNotification);
+
+  const webhook = service.ingestWebhook({ id: "notification-event", type: "PAYMENT.CAPTURE.COMPLETED" });
+  assert.equal(webhook.replayed, false);
+  const eventNotification = service.notificationsList().find((notification) => notification.title === "PayPal event received");
+  assert.ok(eventNotification);
+
+  const read = service.markNotificationRead(eventNotification.id);
+  assert.equal(read.readAt, "2026-01-15T00:00:00.000Z");
 });
 
 test("transaction filters, clients, workflow persistence, and policy violations are exposed", async (t) => {

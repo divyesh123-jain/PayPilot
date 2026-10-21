@@ -74,14 +74,17 @@ export function PoliciesView({
         id: `${key}-runtime`,
         action,
         effect: key === "spending" ? "allow" : "require_approval",
-        description: key === "spending" ? "Allow approved payment actions" : `Require approval for ${key}`,
+        description:
+          key === "spending" ? "Allow approved payment actions" : `Require approval for ${key}`,
       });
     }
     setSaving(true);
     try {
       const saved = await savePolicyRequest({ ...policy, rules });
       onPolicySaved(saved);
-      setMessage(`${key === "spending" ? "Autonomous actions" : key[0].toUpperCase() + key.slice(1)} policy ${enabled ? "enabled" : "disabled"}.`);
+      setMessage(
+        `${key === "spending" ? "Autonomous actions" : key[0].toUpperCase() + key.slice(1)} policy ${enabled ? "enabled" : "disabled"}.`
+      );
     } catch (caught) {
       setPolicies(policies);
       setFormError(caught instanceof Error ? caught.message : "Policy could not be saved.");
@@ -103,10 +106,26 @@ export function PoliciesView({
       setMessage("Draft policy ready for review.");
     } catch (caught) {
       const lower = policyText.toLowerCase();
-      const action = lower.includes("refund") ? "issue_refund" : lower.includes("reminder") || lower.includes("collection") ? "send_reminder" : lower.includes("payment") ? "execute_payment" : null;
+      const action = lower.includes("refund")
+        ? "issue_refund"
+        : lower.includes("reminder") || lower.includes("collection")
+          ? "send_reminder"
+          : lower.includes("payment")
+            ? "execute_payment"
+            : null;
       if (action) {
         setParsed({
-          rule: { id: "local-draft", action, effect: lower.includes("never") || lower.includes("block") ? "deny" : lower.includes("approval") || lower.includes("review") ? "require_approval" : "allow", description: policyText.trim() },
+          rule: {
+            id: "local-draft",
+            action,
+            effect:
+              lower.includes("never") || lower.includes("block")
+                ? "deny"
+                : lower.includes("approval") || lower.includes("review")
+                  ? "require_approval"
+                  : "allow",
+            description: policyText.trim(),
+          },
           confidence: "medium",
           warnings: ["API unavailable; this is a local draft preview."],
         });
@@ -151,12 +170,22 @@ export function PoliciesView({
           <h1>Permission policies</h1>
           <p>Teach PayPilot how to act — and where to stop.</p>
         </div>
-         <Button onClick={() => { setPolicyText(""); setParsed(null); setFormError(null); }}>
+        <Button
+          onClick={() => {
+            setPolicyText("");
+            setParsed(null);
+            setFormError(null);
+          }}
+        >
           <Plus size={15} /> New policy
         </Button>
       </div>
       {loading && <div className="data-status loading-status">Loading runtime policies…</div>}
-      {error && <div className="data-status error-status">Live policies unavailable. Changes will stay local until the API reconnects.</div>}
+      {error && (
+        <div className="data-status error-status">
+          Live policies unavailable. Changes will stay local until the API reconnects.
+        </div>
+      )}
       {message && <div className="data-status success-status">{message}</div>}
       {formError && <div className="data-status error-status">{formError}</div>}
       {saving && <div className="data-status loading-status">Saving policy changes…</div>}
@@ -185,7 +214,7 @@ export function PoliciesView({
                 <span className="eyebrow">ACTIVE RULES</span>
                 <h2>Runtime policies</h2>
               </div>
-               <span className="policy-count">{policy?.rules.length ?? 3} active</span>
+              <span className="policy-count">{policy?.rules.length ?? 0} active</span>
             </div>
             <PolicyCard
               icon={<Send size={17} />}
@@ -227,19 +256,11 @@ export function PoliciesView({
                 <MoreHorizontal size={16} />
               </Button>
             </div>
-            <Violation
-              title="Reminder #3 blocked"
-              detail="Priya Sharma · 2 hr ago"
-              meta="Queued for Monday at 9:00am"
-            />
-            <Violation
-              title="Refund needs approval"
-              detail="Order #10460 · Yesterday"
-              meta="$145 exceeds $100 limit"
-            />
-            <Button variant="link">
-              View full log <ArrowRight size={14} />
-            </Button>
+            <div className="empty-state" style={{ margin: "14px 0" }}>
+              <ShieldCheck size={20} />
+              <strong>No policy violations</strong>
+              <p>Account-backed events will appear here after the first sync.</p>
+            </div>
           </Card>
           <Card className="policy-builder">
             <span className="eyebrow">NATURAL LANGUAGE</span>
@@ -252,16 +273,30 @@ export function PoliciesView({
               onChange={(event) => setPolicyText(event.target.value)}
               placeholder="e.g. Never send a reminder on weekends..."
             />
-             <Button variant="dark" className="full-button" onClick={() => void handleParse()} disabled={saving}>
-               <Sparkles size={15} /> Parse policy
-             </Button>
-             {parsed && (
-               <div className="parsed-state">
-                 <ShieldCheck size={14} />
-                 <span>{parsed.rule.description} · {parsed.confidence} confidence</span>
-                 <Button size="sm" variant="secondary" onClick={() => void handleSaveParsed()} disabled={saving}>Save policy</Button>
-               </div>
-             )}
+            <Button
+              variant="dark"
+              className="full-button"
+              onClick={() => void handleParse()}
+              disabled={saving}
+            >
+              <Sparkles size={15} /> Parse policy
+            </Button>
+            {parsed && (
+              <div className="parsed-state">
+                <ShieldCheck size={14} />
+                <span>
+                  {parsed.rule.description} · {parsed.confidence} confidence
+                </span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void handleSaveParsed()}
+                  disabled={saving}
+                >
+                  Save policy
+                </Button>
+              </div>
+            )}
           </Card>
         </aside>
       </div>

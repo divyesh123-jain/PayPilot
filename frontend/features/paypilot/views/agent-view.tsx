@@ -16,7 +16,7 @@ import { Button } from "@/frontend/components/ui/button";
 import { Card } from "@/frontend/components/ui/card";
 import { Textarea } from "@/frontend/components/ui/textarea";
 import type { BusinessProfile } from "../types";
-import { askAgent, type AgentChatResponse } from "@/frontend/lib/api";
+import { askAgent, type AgentChatResponse, type ApiProposal } from "@/frontend/lib/api";
 
 type Message = {
   id: string;
@@ -28,23 +28,16 @@ type Message = {
   proposals?: readonly any[];
 };
 
-export function AgentView({ business, onReviewApproval }: { business: BusinessProfile; onReviewApproval: () => void }) {
+export function AgentView({
+  business,
+  remoteProposals,
+}: {
+  business: BusinessProfile;
+  remoteProposals: ApiProposal[] | null;
+}) {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "initial-msg",
-      role: "agent",
-      agentName: "Strategist",
-      text: `Good morning, Alex. I’ve been monitoring ${business.name}. ${business.alert.title} — I have a plan ready when you are.`,
-      time: "Just now",
-      toolTrace: [
-        "PayPal Sandbox · 126 transactions",
-        "Policy engine · 3 active rules",
-        "Forecast model · 84% confidence",
-      ],
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
 
   const prompts = [
     "What is my cash situation this week?",
@@ -88,45 +81,16 @@ export function AgentView({ business, onReviewApproval }: { business: BusinessPr
         },
       ]);
     } catch {
-      // Local deterministic fallback
-      setTimeout(() => {
-        let fallbackText = `Scout monitored ${business.name}'s latest PayPal activity and found 0 critical breaches. Trailing balance is steady.`;
-        let fallbackTrace = [
-          "Scout: inspected 126 PayPal sandbox transactions",
-          "Strategist: cash flow model 84% confidence",
-        ];
-
-        if (/follow|who|reminder|overdue/i.test(q)) {
-          fallbackText =
-            "Priya Sharma has an overdue invoice of $2,200.00 (7 days past due). Strategist calculated an expected collection value of $1,980.00. Executor prepared a firm reminder proposal ready in your Inbox queue.";
-          fallbackTrace = [
-            "Scout: identified overdue invoice PP-9D31C0",
-            "Strategist: EV calculated ($1,980 wait vs $2,200 face)",
-            "Executor: verified Email reminders policy · staged proposal",
-          ];
-        } else if (/risk|threat|anomaly/i.test(q)) {
-          fallbackText =
-            "Scout flagged 1 reminder action blocked by the permission engine to prevent exceeding weekly client frequency limits. Zero unauthorized external calls.";
-          fallbackTrace = [
-            "Scout: ran z-score anomaly detector",
-            "Executor: checked permission boundary (blocked reminder #3)",
-          ];
-        }
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `agent-${Date.now()}`,
-            role: "agent",
-            agentName: "Strategist",
-            text: fallbackText,
-            time: "Just now",
-            toolTrace: fallbackTrace,
-          },
-        ]);
-        setLoading(false);
-      }, 400);
-      return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `agent-error-${Date.now()}`,
+          role: "agent",
+          agentName: "Strategist",
+          text: "I can answer once the PayPilot API is connected and your account data has finished syncing.",
+          time: "Just now",
+        },
+      ]);
     }
 
     setLoading(false);
@@ -152,11 +116,21 @@ export function AgentView({ business, onReviewApproval }: { business: BusinessPr
               <strong>PayPilot intelligence</strong>
               <span>Scout · Strategist · Executor</span>
             </div>
-               <Button variant="icon" aria-label="Chat options">
+            <Button variant="icon" aria-label="Chat options">
               <MoreHorizontal size={16} />
             </Button>
           </div>
           <div className="chat-body">
+            {messages.length === 0 && (
+              <div className="empty-state" style={{ margin: "24px 0" }}>
+                <Sparkles size={22} />
+                <strong>No account context yet</strong>
+                <p>
+                  Connect PayPal and sync your records. Answers will be grounded in your workspace
+                  data.
+                </p>
+              </div>
+            )}
             {messages.map((msg) => (
               <div key={msg.id} className={`chat-message ${msg.role}`}>
                 <div className="chat-message-label">
@@ -272,27 +246,28 @@ export function AgentView({ business, onReviewApproval }: { business: BusinessPr
                 <span className="eyebrow">WAITING FOR YOU</span>
                 <h2>Approval queue</h2>
               </div>
-              <span className="queue-count">1</span>
+              <span className="queue-count">
+                {remoteProposals?.filter((proposal) => proposal.status === "proposed").length ?? 0}
+              </span>
             </div>
-            <div className="draft-item">
-              <div className="draft-icon">
-                <Send size={15} />
-              </div>
-              <div>
-                <strong>Reminder to Priya Sharma</strong>
-                <p>Firm tone · Drafted in sandbox</p>
-              </div>
-               <Button variant="icon" aria-label="Review staged proposal" onClick={onReviewApproval}>
+            {(remoteProposals?.filter((proposal) => proposal.status === "proposed").length ?? 0) >
+            0 ? (
+              <div className="draft-item">
+                <div className="draft-icon">
+                  <Send size={15} />
+                </div>
+                <div>
+                  <strong>Proposal ready</strong>
+                  <p>Review it in the Inbox before any external action.</p>
+                </div>
                 <ArrowRight size={15} />
-              </Button>
-            </div>
-             <Button
-               variant="secondary"
-               className="full-button"
-               onClick={onReviewApproval}
-             >
-               Review approval
-            </Button>
+              </div>
+            ) : (
+              <div className="empty-state" style={{ margin: "14px 0" }}>
+                <strong>Queue is empty</strong>
+                <p>Approved proposals will appear here.</p>
+              </div>
+            )}
           </Card>
         </aside>
       </div>

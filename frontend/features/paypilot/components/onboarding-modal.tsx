@@ -1,102 +1,28 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
-  AlertCircle,
   AlertTriangle,
-  ArrowRight,
-  Ban,
-  Building2,
   Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
-  Edit3,
-  ExternalLink,
   Info,
   Lock,
   Mail,
   RefreshCw,
-  RotateCcw,
   Shield,
-  ShieldAlert,
   ShieldCheck,
   Sparkles,
-  User,
   X,
-  Zap,
 } from "lucide-react";
 import { Button } from "@/frontend/components/ui/button";
-import {
-  advanceOnboarding,
-  connectPayPal,
-  getOnboarding,
-  simulateReminder,
-  approveProposal,
-  type OnboardingState,
-} from "@/frontend/lib/api";
+import { advanceOnboarding, connectPayPal } from "@/frontend/lib/api";
 import type { BusinessKey } from "@/frontend/features/paypilot/types";
-import { approvalItem, type ApprovalItem } from "../views/inbox-view";
 
-const STORAGE_KEY = "paypilot_onboarding_v2";
+const STORAGE_KEY = "paypilot_onboarding_v3";
 const COMPLETED_KEY = "paypilot_onboarding_completed";
-
-export type ClientTriState = "keep" | "monitor" | "blocked";
-
-export interface OnboardingClient {
-  id: string;
-  name: string;
-  company: string;
-  email: string;
-  score: string;
-  state: ClientTriState;
-  timezone: string;
-  openInvoices: string;
-}
-
-const DEFAULT_CLIENTS: OnboardingClient[] = [
-  {
-    id: "priya",
-    name: "Priya Sharma",
-    company: "DesignSprint Studio",
-    email: "priya@designsprint.io",
-    score: "4.1/10",
-    state: "monitor",
-    timezone: "America/New_York (UTC-5)",
-    openInvoices: "$2,200.00 (21 days overdue)",
-  },
-  {
-    id: "marcus",
-    name: "Marcus Vance",
-    company: "Vance Logistics",
-    email: "marcus@vancelogistics.com",
-    score: "8.8/10",
-    state: "monitor",
-    timezone: "America/Chicago (UTC-6)",
-    openInvoices: "$1,500.00 (Due tomorrow)",
-  },
-  {
-    id: "jake",
-    name: "Jake Miller",
-    company: "Miller & Co.",
-    email: "jake@millerco.design",
-    score: "6.5/10",
-    state: "monitor",
-    timezone: "America/Los_Angeles (UTC-8)",
-    openInvoices: "$4,100.00 (3 days overdue)",
-  },
-  {
-    id: "elena",
-    name: "Elena Rostova",
-    company: "Aero Labs Tech",
-    email: "elena@aerolabs.tech",
-    score: "9.4/10",
-    state: "monitor",
-    timezone: "Europe/London (UTC+0)",
-    openInvoices: "Paid in full (Prompt)",
-  },
-];
 
 export function OnboardingModal({
   isOpen,
@@ -107,7 +33,6 @@ export function OnboardingModal({
   initialName,
   onBusinessChange,
   onComplete,
-  onOpenApproval,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -122,67 +47,50 @@ export function OnboardingModal({
     businessName: string;
     businessKey: BusinessKey;
   }) => void;
-  onOpenApproval?: (item: ApprovalItem) => void;
 }) {
   const steps = [
-    { id: "create_account", num: 1, title: "Account & Preset" },
-    { id: "consent", num: 2, title: "Permissions & Scopes" },
+    { id: "create_account", num: 1, title: "Workspace details" },
+    { id: "consent", num: 2, title: "Permissions" },
     { id: "connect_paypal", num: 3, title: "Connect PayPal" },
-    { id: "backfill", num: 4, title: "90-Day Backfill" },
-    { id: "baseline", num: 5, title: "Baseline & Clients" },
-    { id: "trust", num: 6, title: "Trust & Policies" },
-    { id: "first_action", num: 7, title: "First Approval" },
+    { id: "backfill", num: 4, title: "History sync" },
+    { id: "baseline", num: 5, title: "Review imported data" },
+    { id: "trust", num: 6, title: "Safety settings" },
+    { id: "first_action", num: 7, title: "Finish setup" },
   ];
 
   // Persistent State
   const [stepIndex, setStepIndex] = useState(0);
 
   // Step 1: Account
-  const [email, setEmail] = useState(initialEmail || "alex@morgancreative.agency");
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
-  const [emailVerified, setEmailVerified] = useState(true);
-  const [name, setName] = useState(initialName || "Alex Morgan");
-  const [businessName, setBusinessName] = useState("Morgan Creative Studio");
+  const [email, setEmail] = useState(initialEmail ?? "");
+  const [name, setName] = useState(initialName ?? "");
+  const [businessName, setBusinessName] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<BusinessKey>(initialPreset || businessKey);
 
   // Step 2: Consent
-  const [consentGranted, setConsentGranted] = useState(true);
-  const [consentDeclined, setConsentDeclined] = useState(false);
+  const [consentGranted, setConsentGranted] = useState(false);
 
   // Step 3: Connect PayPal
   const [connecting, setConnecting] = useState(false);
-  const [connected, setConnected] = useState(true);
+  const [connected, setConnected] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Step 4: Backfill
-  const [backfillProgress, setBackfillProgress] = useState(100);
-  const [backfillSimRetry, setBackfillSimRetry] = useState(false);
-  const [useSampleData, setUseSampleData] = useState(false);
+  const backfillProgress = 0;
 
   // Step 5: Clients & Baseline
-  const [clients, setClients] = useState<OnboardingClient[]>(DEFAULT_CLIENTS);
-  const [editingClientId, setEditingClientId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{ email: string; company: string; timezone: string }>({
-    email: "",
-    company: "",
-    timezone: "",
-  });
 
   // Step 6: Trust
   const [policyTemplate, setPolicyTemplate] = useState("gentle_freelancer");
   const [quietHoursStart, setQuietHoursStart] = useState("22:00");
   const [quietHoursEnd, setQuietHoursEnd] = useState("08:00");
   const [timezone, setTimezone] = useState("America/New_York");
-  const [replyToEmail, setReplyToEmail] = useState("billing@alexmorgan.design");
+  const [replyToEmail, setReplyToEmail] = useState("");
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [notifyInApp, setNotifyInApp] = useState(true);
   const [dailyDigest, setDailyDigest] = useState(true);
 
-  // Step 7: First Approval
-  const [reminderTone, setReminderTone] = useState<"gentle" | "firm" | "friendly">("gentle");
-  const [proposalApproved, setProposalApproved] = useState(false);
-  const [proposalDismissed, setProposalDismissed] = useState(false);
-  const [submittingAction, setSubmittingAction] = useState(false);
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
 
   // Load saved state on mount (Resumable State Machine)
   useEffect(() => {
@@ -197,73 +105,29 @@ export function OnboardingModal({
         if (parsed.selectedPreset) setSelectedPreset(parsed.selectedPreset);
         if (typeof parsed.consentGranted === "boolean") setConsentGranted(parsed.consentGranted);
         if (typeof parsed.connected === "boolean") setConnected(parsed.connected);
-        if (Array.isArray(parsed.clients) && parsed.clients.length > 0) setClients(parsed.clients);
         if (parsed.policyTemplate) setPolicyTemplate(parsed.policyTemplate);
         if (parsed.quietHoursStart) setQuietHoursStart(parsed.quietHoursStart);
         if (parsed.quietHoursEnd) setQuietHoursEnd(parsed.quietHoursEnd);
         if (parsed.timezone) setTimezone(parsed.timezone);
         if (parsed.replyToEmail) setReplyToEmail(parsed.replyToEmail);
-        if (typeof parsed.proposalApproved === "boolean") setProposalApproved(parsed.proposalApproved);
+        if (typeof parsed.notifyEmail === "boolean") setNotifyEmail(parsed.notifyEmail);
+        if (typeof parsed.notifyInApp === "boolean") setNotifyInApp(parsed.notifyInApp);
+        if (typeof parsed.dailyDigest === "boolean") setDailyDigest(parsed.dailyDigest);
       }
     } catch {
       // ignore parse errors
     }
   }, []);
 
-  // Update preset if passed explicitly from landing page
+  // Keep the business type selected from the landing page without inventing profile data.
   useEffect(() => {
     if (initialPreset && isOpen) {
       setSelectedPreset(initialPreset);
-      if (initialPreset === "saas") {
-        setName((prev) => prev === "Alex Morgan" ? "Liam Chen" : prev);
-        setEmail((prev) => prev === "alex@morgancreative.agency" ? "liam@pulsemetrics.io" : prev);
-        setBusinessName((prev) => prev === "Morgan Creative Studio" ? "PulseMetrics SaaS" : prev);
-      } else if (initialPreset === "ecommerce") {
-        setName((prev) => prev === "Alex Morgan" ? "Nora Blake" : prev);
-        setEmail((prev) => prev === "alex@morgancreative.agency" ? "nora@drifttide.com" : prev);
-        setBusinessName((prev) => prev === "Morgan Creative Studio" ? "Drift & Tide Co." : prev);
-      } else if (initialPreset === "agency") {
-        setName((prev) => prev === "Alex Morgan" ? "Maya Patel" : prev);
-        setEmail((prev) => prev === "alex@morgancreative.agency" ? "maya@northstar.agency" : prev);
-        setBusinessName((prev) => prev === "Morgan Creative Studio" ? "NorthStar Agency" : prev);
-      } else if (initialPreset === "service") {
-        setName((prev) => prev === "Alex Morgan" ? "Carlos Silva" : prev);
-        setEmail((prev) => prev === "alex@morgancreative.agency" ? "carlos@silvahvac.com" : prev);
-        setBusinessName((prev) => prev === "Morgan Creative Studio" ? "Silva Home & HVAC" : prev);
-      } else if (initialPreset === "creator") {
-        setName((prev) => prev === "Alex Morgan" ? "Zoe Rivera" : prev);
-        setEmail((prev) => prev === "alex@morgancreative.agency" ? "zoe@creatoracademy.com" : prev);
-        setBusinessName((prev) => prev === "Morgan Creative Studio" ? "The Creator Deck" : prev);
-      }
     }
   }, [initialPreset, isOpen]);
 
   // Save state on any change
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          stepIndex,
-          email,
-          name,
-          businessName,
-          selectedPreset,
-          consentGranted,
-          connected,
-          clients,
-          policyTemplate,
-          quietHoursStart,
-          quietHoursEnd,
-          timezone,
-          replyToEmail,
-          proposalApproved,
-        })
-      );
-    } catch {
-      // storage unavailable
-    }
-  }, [
+  const onboardingSnapshot = JSON.stringify({
     stepIndex,
     email,
     name,
@@ -271,38 +135,62 @@ export function OnboardingModal({
     selectedPreset,
     consentGranted,
     connected,
-    clients,
     policyTemplate,
     quietHoursStart,
     quietHoursEnd,
     timezone,
     replyToEmail,
-    proposalApproved,
-  ]);
+    notifyEmail,
+    notifyInApp,
+    dailyDigest,
+  });
 
-  // Backfill animation on step 4
   useEffect(() => {
-    if (stepIndex === 3) {
-      setBackfillProgress(18);
-      const timer1 = setTimeout(() => setBackfillProgress(46), 400);
-      const timer2 = setTimeout(() => setBackfillProgress(74), 850);
-      const timer3 = setTimeout(() => setBackfillProgress(100), 1300);
-      return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-        clearTimeout(timer3);
-      };
+    try {
+      localStorage.setItem(STORAGE_KEY, onboardingSnapshot);
+    } catch {
+      // storage unavailable
     }
-  }, [stepIndex]);
+  }, [onboardingSnapshot]);
 
   const currentStep = steps[stepIndex] ?? steps[0];
 
   const handleNext = async () => {
+    setValidationMessage(null);
+    if (stepIndex === 0) {
+      if (!name.trim() || !businessName.trim()) {
+        setValidationMessage("Enter your name and business name to continue.");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        setValidationMessage("Enter a valid work email address to continue.");
+        return;
+      }
+    }
+    if (stepIndex === 1 && !consentGranted) {
+      setValidationMessage("Review the permissions and confirm consent before continuing.");
+      return;
+    }
+    if (stepIndex === 2 && !connected) {
+      setValidationMessage(
+        "Connect PayPal before continuing. No connection has been established yet."
+      );
+      return;
+    }
+    if (stepIndex === 5 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyToEmail.trim())) {
+      setValidationMessage("Enter a valid reply-to email address for client communication.");
+      return;
+    }
+
     try {
       await advanceOnboarding(currentStep.id, "complete", {
         account: { email, name, businessName, businessType: selectedPreset },
-        consent: { granted: consentGranted, scopes: ["invoices.read", "payments.read", "orders.read", "disputes.read"] },
+        consent: {
+          granted: consentGranted,
+          scopes: ["invoices.read", "payments.read", "orders.read", "disputes.read"],
+        },
         trust: { policyTemplate, quietHoursStart, quietHoursEnd, timezone, replyToEmail },
+        notifications: { email: notifyEmail, inApp: notifyInApp, dailyDigest },
       });
     } catch {
       // offline fallback
@@ -338,9 +226,6 @@ export function OnboardingModal({
       businessKey: selectedPreset,
     });
     onClose();
-    if (onOpenApproval) {
-      onOpenApproval(approvalItem);
-    }
   };
 
   const handlePresetSelect = (preset: BusinessKey) => {
@@ -350,93 +235,42 @@ export function OnboardingModal({
     }
   };
 
-  const handleConnectPayPal = async (simulateFailure = false) => {
+  const handleConnectPayPal = async () => {
     setConnecting(true);
     setAuthError(null);
     try {
-      if (simulateFailure) {
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        setAuthError("PayPal authorization was cancelled or token handshake failed. Nothing was stored.");
+      const connection = await connectPayPal();
+      if (connection.status !== "active") {
         setConnected(false);
+        setAuthError("PayPal did not confirm an active connection. No credentials were stored.");
       } else {
-        await connectPayPal();
         setConnected(true);
         setAuthError(null);
+        setValidationMessage(null);
+        try {
+          await advanceOnboarding("connect_paypal", "complete");
+        } catch {
+          // The connection is still usable if onboarding progress cannot be saved.
+        }
+        setStepIndex((index) => Math.min(index + 1, steps.length - 1));
       }
     } catch {
-      if (simulateFailure) {
-        setAuthError("PayPal authorization was cancelled or token handshake failed. Nothing was stored.");
-        setConnected(false);
-      } else {
-        setConnected(true);
-      }
+      setConnected(false);
+      setAuthError("We couldn't connect PayPal. Check the authorization window and try again.");
     } finally {
       setConnecting(false);
-      if (!simulateFailure) {
-        handleNext();
-      }
     }
   };
-
-  const handleSetAllValidToKeep = () => {
-    setClients((prev) =>
-      prev.map((c) => ({
-        ...c,
-        state: c.email && c.email.includes("@") ? "keep" : c.state,
-      }))
-    );
-  };
-
-  const handleClientStateChange = (id: string, nextState: ClientTriState) => {
-    setClients((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, state: nextState } : c))
-    );
-  };
-
-  const startEditClient = (client: OnboardingClient) => {
-    setEditingClientId(client.id);
-    setEditForm({ email: client.email, company: client.company, timezone: client.timezone });
-  };
-
-  const saveEditClient = (id: string) => {
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id === id
-          ? { ...c, email: editForm.email, company: editForm.company, timezone: editForm.timezone }
-          : c
-      )
-    );
-    setEditingClientId(null);
-  };
-
-  const handleApproveProposal = async () => {
-    setSubmittingAction(true);
-    try {
-      const simulated = await simulateReminder("A gentle reminder for the overdue web design invoice.");
-      await approveProposal(simulated.proposal.id);
-      setProposalApproved(true);
-      setProposalDismissed(false);
-    } catch {
-      setProposalApproved(true);
-    } finally {
-      setSubmittingAction(false);
-    }
-  };
-
-  const reminderMessageText = useMemo(() => {
-    if (reminderTone === "gentle") {
-      return `Hi Priya, hope you're having a productive week! Following up on invoice #PP-9D31C0 for $2,200 (Web Design final milestone), which was due on Oct 1. Could you check if payment has been processed? Here's the direct PayPal payment link: paypal.com/invoice/p/PP-9D31C0. Thanks so much!`;
-    }
-    if (reminderTone === "friendly") {
-      return `Hey Priya! Quick check-in on the $2,200 web design invoice (#PP-9D31C0). Whenever you get a chance to take a look, the PayPal link is ready here: paypal.com/invoice/p/PP-9D31C0. Appreciate you!`;
-    }
-    return `Notice: Invoice #PP-9D31C0 for $2,200 is currently 21 days past due. Please remit payment via PayPal at paypal.com/invoice/p/PP-9D31C0 or contact us immediately to avoid service interruption.`;
-  }, [reminderTone]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="what-if-overlay" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+    <div
+      className="what-if-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="onboarding-title"
+    >
       <div
         className="what-if-dialog"
         style={{
@@ -530,15 +364,25 @@ export function OnboardingModal({
         </div>
 
         {/* Step Progress Tracker */}
-        <div style={{ padding: "12px 24px 0", background: "#f8fafc", borderBottom: "1px solid #f1f5f9" }}>
+        <div
+          style={{
+            padding: "12px 24px 0",
+            background: "#f8fafc",
+            borderBottom: "1px solid #f1f5f9",
+          }}
+        >
           <div style={{ display: "flex", gap: "4px", marginBottom: "8px" }}>
             {steps.map((s, idx) => {
               const isPast = idx < stepIndex;
               const isCurrent = idx === stepIndex;
               return (
-                <div
+                <button
+                  type="button"
                   key={s.id}
-                  onClick={() => setStepIndex(idx)}
+                  onClick={() => idx <= stepIndex && setStepIndex(idx)}
+                  disabled={idx > stepIndex}
+                  aria-label={`${s.num}. ${s.title}${isCurrent ? ", current step" : isPast ? ", complete" : ", upcoming"}`}
+                  aria-current={isCurrent ? "step" : undefined}
                   title={`${s.num}. ${s.title}`}
                   style={{
                     flex: 1,
@@ -546,7 +390,9 @@ export function OnboardingModal({
                     borderRadius: "3px",
                     background: isCurrent ? "#6366f1" : isPast ? "#10b981" : "#e2e8f0",
                     transition: "all 0.2s ease",
-                    cursor: "pointer",
+                    cursor: idx <= stepIndex ? "pointer" : "default",
+                    border: 0,
+                    padding: 0,
                   }}
                 />
               );
@@ -577,19 +423,38 @@ export function OnboardingModal({
             background: "#ffffff",
           }}
         >
+          {validationMessage && (
+            <div
+              role="alert"
+              style={{
+                margin: "12px 24px 0",
+                padding: "10px 12px",
+                border: "1px solid #fecaca",
+                borderRadius: "8px",
+                background: "#fef2f2",
+                color: "#991b1b",
+                fontSize: "12px",
+              }}
+            >
+              {validationMessage}
+            </div>
+          )}
           {/* STEP 1: CREATE ACCOUNT & BUSINESS PRESET */}
           {stepIndex === 0 && (
             <div>
               <div style={{ marginBottom: "16px" }}>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}>
-                  Create Your Account & Choose Business Preset
+                <h3
+                  style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}
+                >
+                  Set up your PayPilot workspace
                 </h3>
                 <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
-                  Sign in password-free with a magic link. Choose your business type to automatically configure custom financial vocabulary, anomaly detectors, and forecast baselines.
+                  Tell us where to send account notifications and choose the operating model that
+                  best matches your business. You can change these settings later.
                 </p>
               </div>
 
-              {/* Magic Link Section */}
+              {/* Account details */}
               <div
                 style={{
                   background: "#f8fafc",
@@ -599,61 +464,81 @@ export function OnboardingModal({
                   marginBottom: "16px",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>Work Email Address</label>
-                  {emailVerified ? (
-                    <span style={{ fontSize: "11px", color: "#059669", display: "flex", alignItems: "center", gap: "4px", fontWeight: 600 }}>
-                      <CheckCircle2 size={13} /> Email Verified
-                    </span>
-                  ) : null}
-                </div>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <div style={{ position: "relative", flex: 1 }}>
-                    <Mail size={15} style={{ position: "absolute", left: "10px", top: "10px", color: "#94a3b8" }} />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => {
-                        setEmail(e.target.value);
-                        setEmailVerified(false);
-                      }}
-                      placeholder="you@company.com"
-                      style={{
-                        width: "100%",
-                        padding: "8px 10px 8px 32px",
-                        borderRadius: "6px",
-                        border: "1px solid #cbd5e1",
-                        fontSize: "13px",
-                      }}
-                    />
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setMagicLinkSent(true);
-                      setEmailVerified(true);
+                <label
+                  htmlFor="onboarding-email"
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "#334155",
+                    display: "block",
+                    marginBottom: "8px",
+                  }}
+                >
+                  Work email address{" "}
+                  <span aria-hidden="true" style={{ color: "#dc2626" }}>
+                    *
+                  </span>
+                </label>
+                <div style={{ position: "relative" }}>
+                  <Mail
+                    size={15}
+                    style={{ position: "absolute", left: "10px", top: "10px", color: "#94a3b8" }}
+                  />
+                  <input
+                    id="onboarding-email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@company.com"
+                    aria-describedby="onboarding-email-help"
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px 8px 32px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "13px",
                     }}
-                  >
-                    {emailVerified ? "Re-verify" : "Send Magic Link"}
-                  </Button>
+                  />
                 </div>
-                {magicLinkSent && (
-                  <div style={{ fontSize: "11px", color: "#0284c7", marginTop: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Info size={13} />
-                    Magic link verified! Account & tenant generated with single-account vault isolation.
-                  </div>
-                )}
+                <div
+                  id="onboarding-email-help"
+                  style={{ fontSize: "11px", color: "#64748b", marginTop: "6px" }}
+                >
+                  We’ll use this address for setup updates. PayPilot does not mark it verified until
+                  your email provider confirms it.
+                </div>
               </div>
 
               {/* Profile Details */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "12px",
+                  marginBottom: "16px",
+                }}
+              >
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Your Name
+                  <label
+                    htmlFor="onboarding-name"
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#334155",
+                      display: "block",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Your name{" "}
+                    <span aria-hidden="true" style={{ color: "#dc2626" }}>
+                      *
+                    </span>
                   </label>
                   <input
+                    id="onboarding-name"
                     type="text"
+                    required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     style={{
@@ -666,11 +551,25 @@ export function OnboardingModal({
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Business / Studio Name
+                  <label
+                    htmlFor="onboarding-business"
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#334155",
+                      display: "block",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Business name{" "}
+                    <span aria-hidden="true" style={{ color: "#dc2626" }}>
+                      *
+                    </span>
                   </label>
                   <input
+                    id="onboarding-business"
                     type="text"
+                    required
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     style={{
@@ -685,14 +584,29 @@ export function OnboardingModal({
               </div>
 
               {/* Preset Selection Cards */}
-              <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "8px" }}>
+              <label
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#334155",
+                  display: "block",
+                  marginBottom: "8px",
+                }}
+              >
                 Select Business Preset (Loads matching detectors & vocabulary)
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "16px" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "10px",
+                  marginBottom: "16px",
+                }}
+              >
                 {[
                   {
                     key: "freelancer" as BusinessKey,
-                    title: "Freelancer / Agency",
+                    title: "Freelancer & Creative Studio",
                     desc: "Project milestones, client relationship care, gentle Net-15/30 terms",
                     tag: "Polite Reminders",
                   },
@@ -714,13 +628,29 @@ export function OnboardingModal({
                     desc: "Supporter tips, digital downloads, chargeback limits, refund policy",
                     tag: "Creator Shield",
                   },
+                  {
+                    key: "agency" as BusinessKey,
+                    title: "Agencies & Consultancies",
+                    desc: "Milestone billing, purchase orders, renewals, and executive escalation paths",
+                    tag: "Structured Billing",
+                  },
+                  {
+                    key: "service" as BusinessKey,
+                    title: "Home & Field Services",
+                    desc: "Service-call payments, mobile pay links, and same-day settlement follow-up",
+                    tag: "Fast Collection",
+                  },
                 ].map((item) => {
                   const isSelected = selectedPreset === item.key;
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={item.key}
                       onClick={() => handlePresetSelect(item.key)}
+                      aria-pressed={isSelected}
                       style={{
+                        width: "100%",
+                        textAlign: "left",
                         padding: "12px",
                         borderRadius: "8px",
                         border: isSelected ? "2px solid #6366f1" : "1px solid #e2e8f0",
@@ -729,8 +659,17 @@ export function OnboardingModal({
                         transition: "all 0.15s ease",
                       }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                        <strong style={{ fontSize: "13px", color: isSelected ? "#4338ca" : "#1e293b" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        <strong
+                          style={{ fontSize: "13px", color: isSelected ? "#4338ca" : "#1e293b" }}
+                        >
                           {item.title}
                         </strong>
                         <span
@@ -746,8 +685,12 @@ export function OnboardingModal({
                           {item.tag}
                         </span>
                       </div>
-                      <p style={{ fontSize: "11px", color: "#64748b", margin: 0, lineHeight: "1.4" }}>{item.desc}</p>
-                    </div>
+                      <p
+                        style={{ fontSize: "11px", color: "#64748b", margin: 0, lineHeight: "1.4" }}
+                      >
+                        {item.desc}
+                      </p>
+                    </button>
                   );
                 })}
               </div>
@@ -778,17 +721,27 @@ export function OnboardingModal({
           {stepIndex === 1 && (
             <div>
               <div style={{ marginBottom: "16px" }}>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}>
-                  Plain-Language Permissions & Scopes
+                <h3
+                  style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}
+                >
+                  Review permissions before connecting
                 </h3>
                 <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
-                  PayPilot accesses only the specific PayPal endpoints needed to monitor cash flow and draft safe reminders. 
-                  Tokens are sealed inside an encrypted vault and <strong>never exposed to LLMs</strong>.
+                  PayPilot requests the access it needs to read payment activity, prepare drafts,
+                  and surface account risks. Nothing is sent to your customers without your
+                  approval.
                 </p>
               </div>
 
               {/* Permission List */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  marginBottom: "16px",
+                }}
+              >
                 <div
                   style={{
                     display: "flex",
@@ -799,13 +752,29 @@ export function OnboardingModal({
                     borderRadius: "8px",
                   }}
                 >
-                  <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0, marginTop: "2px" }} />
+                  <CheckCircle2
+                    size={20}
+                    color="#10b981"
+                    style={{ flexShrink: 0, marginTop: "2px" }}
+                  />
                   <div>
                     <div style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>
-                      Invoicing v2 (<span style={{ fontFamily: "monospace", fontSize: "11px", color: "#6366f1" }}>invoices.read, invoices.write</span>)
+                      Invoicing v2 (
+                      <span style={{ fontFamily: "monospace", fontSize: "11px", color: "#6366f1" }}>
+                        invoices.read, invoices.write
+                      </span>
+                      )
                     </div>
-                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px", lineHeight: "1.4" }}>
-                      Reads overdue invoice statuses, unpaid balances, and recipient emails. Prepares draft reminders. 
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "#64748b",
+                        marginTop: "3px",
+                        lineHeight: "1.4",
+                      }}
+                    >
+                      Reads overdue invoice statuses, unpaid balances, and recipient emails.
+                      Prepares draft reminders.
                       <strong> Zero automated sends</strong> without your explicit 1-click approval.
                     </div>
                   </div>
@@ -821,13 +790,29 @@ export function OnboardingModal({
                     borderRadius: "8px",
                   }}
                 >
-                  <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0, marginTop: "2px" }} />
+                  <CheckCircle2
+                    size={20}
+                    color="#10b981"
+                    style={{ flexShrink: 0, marginTop: "2px" }}
+                  />
                   <div>
                     <div style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>
-                      Orders v2 & Captures (<span style={{ fontFamily: "monospace", fontSize: "11px", color: "#6366f1" }}>orders.read, payments.read</span>)
+                      Orders v2 & Captures (
+                      <span style={{ fontFamily: "monospace", fontSize: "11px", color: "#6366f1" }}>
+                        orders.read, payments.read
+                      </span>
+                      )
                     </div>
-                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px", lineHeight: "1.4" }}>
-                      Reads historical transaction volume and payment settlements to construct your 14-day cash-flow forecast and calculate client reliability scores.
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "#64748b",
+                        marginTop: "3px",
+                        lineHeight: "1.4",
+                      }}
+                    >
+                      Reads historical transaction volume and payment settlements to construct your
+                      14-day cash-flow forecast and calculate client reliability scores.
                     </div>
                   </div>
                 </div>
@@ -842,13 +827,29 @@ export function OnboardingModal({
                     borderRadius: "8px",
                   }}
                 >
-                  <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0, marginTop: "2px" }} />
+                  <CheckCircle2
+                    size={20}
+                    color="#10b981"
+                    style={{ flexShrink: 0, marginTop: "2px" }}
+                  />
                   <div>
                     <div style={{ fontSize: "13px", fontWeight: 600, color: "#0f172a" }}>
-                      Webhooks & Disputes (<span style={{ fontFamily: "monospace", fontSize: "11px", color: "#6366f1" }}>disputes.read, webhooks.manage</span>)
+                      Webhooks & Disputes (
+                      <span style={{ fontFamily: "monospace", fontSize: "11px", color: "#6366f1" }}>
+                        disputes.read, webhooks.manage
+                      </span>
+                      )
                     </div>
-                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px", lineHeight: "1.4" }}>
-                      Subscribes to dispute claims, chargebacks, and payment failures to trigger real-time liquidity alerts in your Agent Inbox.
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "#64748b",
+                        marginTop: "3px",
+                        lineHeight: "1.4",
+                      }}
+                    >
+                      Subscribes to dispute claims, chargebacks, and payment failures to trigger
+                      real-time liquidity alerts in your Agent Inbox.
                     </div>
                   </div>
                 </div>
@@ -869,42 +870,41 @@ export function OnboardingModal({
               >
                 <ShieldCheck size={22} color="#2563eb" />
                 <div style={{ fontSize: "12px", color: "#1e40af" }}>
-                  <strong>LLM Zero-Knowledge Proof:</strong> AI agents only receive sanitized tool summaries. Raw OAuth tokens, bank account IDs, and secrets never enter the LLM context.
+                  <strong>What happens next:</strong> PayPilot stores the connection securely and
+                  keeps outbound actions behind your approval.
                 </div>
               </div>
 
               {/* Explicit Consent Options */}
-              <div style={{ padding: "12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "13px" }}>
+              <div
+                style={{
+                  padding: "12px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "8px",
+                }}
+              >
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={consentGranted}
-                    onChange={(e) => {
-                      setConsentGranted(e.target.checked);
-                      if (e.target.checked) setConsentDeclined(false);
-                    }}
+                    aria-describedby="permission-consent-copy"
+                    onChange={(e) => setConsentGranted(e.target.checked)}
                     style={{ width: "16px", height: "16px", accentColor: "#6366f1" }}
                   />
-                  <span style={{ color: "#1e293b", fontWeight: 600 }}>
-                    I explicitly consent to grant read & draft access to PayPilot under Level 0 oversight.
+                  <span id="permission-consent-copy" style={{ color: "#1e293b", fontWeight: 600 }}>
+                    I explicitly consent to grant read & draft access to PayPilot under Level 0
+                    oversight.
                   </span>
                 </label>
-
-                {consentDeclined && (
-                  <div
-                    style={{
-                      marginTop: "10px",
-                      padding: "10px",
-                      background: "#fef2f2",
-                      border: "1px solid #fecaca",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                      color: "#991b1b",
-                    }}
-                  >
-                    You declined live PayPal permissions. You can proceed to explore PayPilot using the synthetic demo workspace, or re-enable consent above.
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -913,11 +913,15 @@ export function OnboardingModal({
           {stepIndex === 2 && (
             <div>
               <div style={{ marginBottom: "16px" }}>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}>
-                  Authorize PayPal Sandbox Connection
+                <h3
+                  style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}
+                >
+                  Connect your PayPal account
                 </h3>
                 <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
-                  Connect your merchant credentials. Tokens are stored in an envelope-encrypted vault and bound to a single merchant workspace.
+                  Use PayPal’s authorization flow to connect the merchant account you want to
+                  monitor. PayPilot will show the result here; it will not assume a connection
+                  before PayPal confirms it.
                 </p>
               </div>
 
@@ -930,27 +934,75 @@ export function OnboardingModal({
                   marginBottom: "16px",
                 }}
               >
-                <div style={{ padding: "12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 600 }}>
-                    PayPal Account ID Binding
+                <div
+                  style={{
+                    padding: "12px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "#64748b",
+                      textTransform: "uppercase",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Connection status
                   </div>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a", marginTop: "4px", fontFamily: "monospace" }}>
-                    PAYPAL-SBX-88219
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      color: "#0f172a",
+                      marginTop: "4px",
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    {connected ? "Connected" : "Not connected"}
                   </div>
                   <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
-                    Single-account binding active
+                    {connected
+                      ? "PayPal confirmed this connection"
+                      : "Authorize PayPal to continue"}
                   </div>
                 </div>
 
-                <div style={{ padding: "12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 600 }}>
+                <div
+                  style={{
+                    padding: "12px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "#64748b",
+                      textTransform: "uppercase",
+                      fontWeight: 600,
+                    }}
+                  >
                     Vault Security
                   </div>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#059669", marginTop: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
-                    <Lock size={13} /> AES-256 GCM Envelope Vault
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      color: "#059669",
+                      marginTop: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <Lock size={13} /> Secure credential storage
                   </div>
                   <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
-                    Isolated per-tenant storage
+                    Credentials remain outside the assistant context
                   </div>
                 </div>
               </div>
@@ -966,12 +1018,30 @@ export function OnboardingModal({
                   marginBottom: "16px",
                 }}
               >
-                <Shield size={36} color={connected ? "#16a34a" : "#2563eb"} style={{ margin: "0 auto 8px" }} />
-                <div style={{ fontWeight: 700, color: connected ? "#166534" : "#1e3a8a", fontSize: "16px" }}>
-                  {connected ? "PayPal Sandbox Merchant Connected" : "Ready to Authorize"}
+                <Shield
+                  size={36}
+                  color={connected ? "#16a34a" : "#2563eb"}
+                  style={{ margin: "0 auto 8px" }}
+                />
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: connected ? "#166534" : "#1e3a8a",
+                    fontSize: "16px",
+                  }}
+                >
+                  {connected ? "PayPal connection active" : "PayPal connection not established"}
                 </div>
-                <div style={{ fontSize: "12px", color: connected ? "#15803d" : "#3b82f6", marginTop: "4px" }}>
-                  Sandbox Partner App ID: <span style={{ fontFamily: "monospace" }}>paypilot-hackathon-2026</span>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: connected ? "#15803d" : "#3b82f6",
+                    marginTop: "4px",
+                  }}
+                >
+                  {connected
+                    ? "PayPilot can now request the data needed for setup."
+                    : "No PayPal data has been imported yet."}
                 </div>
 
                 {authError && (
@@ -995,22 +1065,21 @@ export function OnboardingModal({
                   </div>
                 )}
 
-                <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginTop: "16px" }}>
-                  <Button
-                    onClick={() => handleConnectPayPal(false)}
-                    disabled={connecting}
-                  >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    gap: "10px",
+                    marginTop: "16px",
+                  }}
+                >
+                  <Button onClick={handleConnectPayPal} disabled={connecting}>
                     {connecting ? <RefreshCw size={15} className="spin" /> : <Lock size={15} />}
-                    {connecting ? "Connecting..." : connected ? "Re-Authorize Connection" : "Authorize Sandbox Connection"}
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleConnectPayPal(true)}
-                    title="Simulate failure/cancel edge case to test Retry behavior"
-                  >
-                    Test Failure Edge Case
+                    {connecting
+                      ? "Connecting..."
+                      : connected
+                        ? "Reconnect PayPal"
+                        : "Connect PayPal"}
                   </Button>
                 </div>
               </div>
@@ -1021,12 +1090,14 @@ export function OnboardingModal({
           {stepIndex === 3 && (
             <div>
               <div style={{ marginBottom: "16px" }}>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}>
-                  Backfilling 90-Day Financial History
+                <h3
+                  style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}
+                >
+                  Preparing your history sync
                 </h3>
                 <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
-                  Background job pulls ~90 days of transactions, invoices, and subscriptions paged by date windows. 
-                  Newest data loads first so initial findings appear early.
+                  After PayPal confirms the connection, PayPilot will import available transaction
+                  and invoice history. This workspace has not received any history yet.
                 </p>
               </div>
 
@@ -1040,42 +1111,37 @@ export function OnboardingModal({
                   marginBottom: "16px",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "8px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: "13px",
+                    marginBottom: "8px",
+                  }}
+                >
                   <span style={{ fontWeight: 600, color: "#1e293b" }}>
-                    {backfillProgress < 100
-                      ? `Ingesting PayPal history... (Loaded ${Math.round((backfillProgress / 100) * 90)} of 90 days)`
-                      : "90-day backfill complete · 90 of 90 days loaded"}
+                    Waiting for history sync to begin
                   </span>
-                  <strong style={{ color: "#6366f1" }}>{backfillProgress}%</strong>
+                  <strong style={{ color: "#64748b" }}>Not started</strong>
                 </div>
 
-                <div style={{ height: "10px", width: "100%", background: "#e2e8f0", borderRadius: "5px", overflow: "hidden" }}>
+                <div
+                  style={{
+                    height: "10px",
+                    width: "100%",
+                    background: "#e2e8f0",
+                    borderRadius: "5px",
+                    overflow: "hidden",
+                  }}
+                >
                   <div
                     style={{
                       height: "100%",
                       width: `${backfillProgress}%`,
-                      background: backfillProgress === 100 ? "#10b981" : "#6366f1",
+                      background: "#cbd5e1",
                       transition: "width 0.4s ease-out",
                     }}
                   />
-                </div>
-
-                {/* 3 Windows Tracker */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginTop: "14px" }}>
-                  <div style={{ padding: "8px", background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "6px", fontSize: "11px" }}>
-                    <div style={{ color: "#64748b" }}>Window 1 (Days 90–60)</div>
-                    <strong style={{ color: "#059669" }}>✓ 48 Transactions</strong>
-                  </div>
-                  <div style={{ padding: "8px", background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "6px", fontSize: "11px" }}>
-                    <div style={{ color: "#64748b" }}>Window 2 (Days 60–30)</div>
-                    <strong style={{ color: "#059669" }}>✓ 52 Transactions · 8 Invoices</strong>
-                  </div>
-                  <div style={{ padding: "8px", background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "6px", fontSize: "11px" }}>
-                    <div style={{ color: "#64748b" }}>Window 3 (Days 30–0)</div>
-                    <strong style={{ color: backfillProgress >= 80 ? "#059669" : "#6366f1" }}>
-                      {backfillProgress >= 80 ? "✓ 26 Trx · 6 Invoices" : "Ingesting newest..."}
-                    </strong>
-                  </div>
                 </div>
               </div>
 
@@ -1096,30 +1162,10 @@ export function OnboardingModal({
               >
                 <Clock size={18} color="#2563eb" style={{ flexShrink: 0 }} />
                 <span>
-                  <strong>Feel free to close this tab:</strong> Backfill continues in the background. An email confirmation will be sent to <strong>{email}</strong> when finished. Upserts are idempotent and retryable.
+                  <strong>Nothing is being imported yet:</strong> this status will update after
+                  PayPal confirms an active connection. You can continue setup and review the
+                  workspace once data arrives.
                 </span>
-              </div>
-
-              {/* Edge Case Helpers */}
-              <div style={{ display: "flex", gap: "10px" }}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setBackfillSimRetry(true);
-                    setTimeout(() => setBackfillSimRetry(false), 1200);
-                  }}
-                >
-                  <RotateCcw size={12} />
-                  {backfillSimRetry ? "Retrying Window 2..." : "Simulate Network Retry"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setUseSampleData(!useSampleData)}
-                >
-                  {useSampleData ? "✓ Sample Data Loaded" : "No history? Try Sample Data"}
-                </Button>
               </div>
             </div>
           )}
@@ -1127,160 +1173,41 @@ export function OnboardingModal({
           {/* STEP 5: BUILD BASELINE & CLIENT REVIEW */}
           {stepIndex === 4 && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+              <div style={{ marginBottom: "12px" }}>
                 <div>
-                  <h3 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 4px", color: "#0f172a" }}>
-                    Baseline Computed & Client Review
+                  <h3
+                    style={{
+                      fontSize: "18px",
+                      fontWeight: 700,
+                      margin: "0 0 4px",
+                      color: "#0f172a",
+                    }}
+                  >
+                    Review imported data
                   </h3>
                   <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.4", margin: 0 }}>
-                    Scout computed client reliability scores (0–10). Clients default to <strong>Monitor only</strong> (scored & forecasted, zero outbound messages).
+                    Once history is available, PayPilot will show detected clients, payment
+                    patterns, and findings here for your review. No client records have been
+                    imported yet.
                   </p>
                 </div>
-                <Button variant="secondary" size="sm" onClick={handleSetAllValidToKeep}>
-                  <Check size={13} /> Keep all with valid email
-                </Button>
               </div>
 
-              {/* 3 First Findings Preview */}
-              <div style={{ marginBottom: "14px" }}>
-                <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "#64748b", marginBottom: "6px" }}>
-                  First Three Intelligence Findings
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <div style={{ padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", fontSize: "12px", color: "#991b1b", display: "flex", alignItems: "center", gap: "8px" }}>
-                    <AlertCircle size={15} />
-                    <span><strong>Finding 1:</strong> Priya Sharma $2,200 invoice is 21 days overdue (Reliability: 4.1/10).</span>
-                  </div>
-                  <div style={{ padding: "8px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", fontSize: "12px", color: "#92400e", display: "flex", alignItems: "center", gap: "8px" }}>
-                    <ShieldAlert size={15} />
-                    <span><strong>Finding 2:</strong> 3rd reminder blocked by policy guardrail (max 2 per client / 7 days).</span>
-                  </div>
-                  <div style={{ padding: "8px 12px", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "6px", fontSize: "12px", color: "#065f46", display: "flex", alignItems: "center", gap: "8px" }}>
-                    <CheckCircle2 size={15} />
-                    <span><strong>Finding 3:</strong> 14-day cash forecast confirmed: $14,200 expected balance with healthy runway.</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Client Tri-state Selector List */}
-              <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "#64748b", marginBottom: "6px" }}>
-                Detected Clients ({clients.length})
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {clients.map((c) => {
-                  const isEditing = editingClientId === c.id;
-                  return (
-                    <div
-                      key={c.id}
-                      style={{
-                        padding: "10px 12px",
-                        background: "#f8fafc",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "8px",
-                      }}
-                    >
-                      {isEditing ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                            <input
-                              type="email"
-                              value={editForm.email}
-                              onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-                              placeholder="Email"
-                              style={{ padding: "6px 8px", fontSize: "12px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
-                            />
-                            <input
-                              type="text"
-                              value={editForm.company}
-                              onChange={(e) => setEditForm((f) => ({ ...f, company: e.target.value }))}
-                              placeholder="Company"
-                              style={{ padding: "6px 8px", fontSize: "12px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
-                            />
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
-                            <Button size="sm" variant="ghost" onClick={() => setEditingClientId(null)}>
-                              Cancel
-                            </Button>
-                            <Button size="sm" onClick={() => saveEditClient(c.id)}>
-                              Save Client
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                              <strong style={{ fontSize: "13px", color: "#0f172a" }}>{c.name}</strong>
-                              <span style={{ fontSize: "11px", color: "#64748b" }}>· {c.company}</span>
-                              <button
-                                onClick={() => startEditClient(c)}
-                                style={{ background: "none", border: "none", color: "#6366f1", cursor: "pointer", padding: 0 }}
-                                title="Edit client details"
-                              >
-                                <Edit3 size={12} />
-                              </button>
-                            </div>
-                            <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                              {c.email} · Reliability: <strong style={{ color: "#0f172a" }}>{c.score}</strong> · {c.openInvoices}
-                            </div>
-                          </div>
-
-                          {/* Tri-state buttons */}
-                          <div style={{ display: "flex", gap: "4px" }}>
-                            <button
-                              onClick={() => handleClientStateChange(c.id, "keep")}
-                              style={{
-                                padding: "4px 8px",
-                                fontSize: "11px",
-                                borderRadius: "4px",
-                                border: c.state === "keep" ? "1px solid #10b981" : "1px solid #e2e8f0",
-                                background: c.state === "keep" ? "#dcfce7" : "#ffffff",
-                                color: c.state === "keep" ? "#166534" : "#64748b",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                              title="Keep: Monitored and messageable"
-                            >
-                              Keep
-                            </button>
-                            <button
-                              onClick={() => handleClientStateChange(c.id, "monitor")}
-                              style={{
-                                padding: "4px 8px",
-                                fontSize: "11px",
-                                borderRadius: "4px",
-                                border: c.state === "monitor" ? "1px solid #6366f1" : "1px solid #e2e8f0",
-                                background: c.state === "monitor" ? "#ede9fe" : "#ffffff",
-                                color: c.state === "monitor" ? "#4338ca" : "#64748b",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                              title="Monitor only: Forecasts only, never messaged"
-                            >
-                              Monitor only
-                            </button>
-                            <button
-                              onClick={() => handleClientStateChange(c.id, "blocked")}
-                              style={{
-                                padding: "4px 8px",
-                                fontSize: "11px",
-                                borderRadius: "4px",
-                                border: c.state === "blocked" ? "1px solid #ef4444" : "1px solid #e2e8f0",
-                                background: c.state === "blocked" ? "#fee2e2" : "#ffffff",
-                                color: c.state === "blocked" ? "#991b1b" : "#64748b",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                              title="Do not contact: Hard block on all outbound communication"
-                            >
-                              Do not contact
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+              <div
+                role="status"
+                style={{
+                  padding: "22px 16px",
+                  background: "#f8fafc",
+                  border: "1px dashed #cbd5e1",
+                  borderRadius: "8px",
+                  color: "#64748b",
+                  fontSize: "12px",
+                  textAlign: "center",
+                }}
+              >
+                <Info size={20} style={{ margin: "0 auto 8px", color: "#94a3b8" }} />
+                Your imported clients and first findings will appear here after the PayPal history
+                sync completes.
               </div>
             </div>
           )}
@@ -1289,37 +1216,59 @@ export function OnboardingModal({
           {stepIndex === 5 && (
             <div>
               <div style={{ marginBottom: "16px" }}>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}>
+                <h3
+                  style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}
+                >
                   Set Trust, Quiet Hours & Guardrails
                 </h3>
                 <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
-                  PayPilot operates strictly inside your guardrails. Configure allowed communication hours and notification channels.
+                  PayPilot operates strictly inside your guardrails. Configure allowed communication
+                  hours and notification channels.
                 </p>
               </div>
 
               {/* Policy Template Picker */}
-              <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "8px" }}>
-                Policy Template for {selectedPreset.toUpperCase()}
+              <label
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#334155",
+                  display: "block",
+                  marginBottom: "8px",
+                }}
+              >
+                Recommended policy for your workspace
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "16px" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "10px",
+                  marginBottom: "16px",
+                }}
+              >
                 {[
                   {
                     id: "gentle_freelancer",
-                    title: "Gentle Net-15 (Recommended)",
-                    desc: "Polite reminder at 3 & 7 days overdue. Warm tone, pause on weekends.",
+                    title: "Relationship-first follow-ups",
+                    desc: "Polite reminders at 3 and 7 days overdue, with a warm tone and weekend pause.",
                   },
                   {
                     id: "strict_net30",
-                    title: "Strict Net-30",
-                    desc: "Formal notices at 7 & 14 days overdue. Automated late fee warnings.",
+                    title: "Structured payment follow-ups",
+                    desc: "Formal notices at 7 and 14 days overdue, with clear escalation language.",
                   },
                 ].map((tpl) => {
                   const isSelected = policyTemplate === tpl.id;
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={tpl.id}
                       onClick={() => setPolicyTemplate(tpl.id)}
+                      aria-pressed={isSelected}
                       style={{
+                        width: "100%",
+                        textAlign: "left",
                         padding: "12px",
                         borderRadius: "8px",
                         border: isSelected ? "2px solid #6366f1" : "1px solid #e2e8f0",
@@ -1327,13 +1276,26 @@ export function OnboardingModal({
                         cursor: "pointer",
                       }}
                     >
-                      <strong style={{ fontSize: "13px", color: isSelected ? "#4338ca" : "#1e293b", display: "block" }}>
+                      <strong
+                        style={{
+                          fontSize: "13px",
+                          color: isSelected ? "#4338ca" : "#1e293b",
+                          display: "block",
+                        }}
+                      >
                         {tpl.title}
                       </strong>
-                      <span style={{ fontSize: "11px", color: "#64748b", marginTop: "3px", display: "block" }}>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          color: "#64748b",
+                          marginTop: "3px",
+                          display: "block",
+                        }}
+                      >
                         {tpl.desc}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -1348,9 +1310,24 @@ export function OnboardingModal({
                   marginBottom: "16px",
                 }}
               >
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "12px",
+                    marginBottom: "12px",
+                  }}
+                >
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    <label
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        color: "#334155",
+                        display: "block",
+                        marginBottom: "4px",
+                      }}
+                    >
                       Quiet Hours (Zero outbound messages)
                     </label>
                     <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
@@ -1358,26 +1335,50 @@ export function OnboardingModal({
                         type="time"
                         value={quietHoursStart}
                         onChange={(e) => setQuietHoursStart(e.target.value)}
-                        style={{ padding: "6px 8px", fontSize: "12px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                        style={{
+                          padding: "6px 8px",
+                          fontSize: "12px",
+                          borderRadius: "4px",
+                          border: "1px solid #cbd5e1",
+                        }}
                       />
                       <span style={{ fontSize: "12px", color: "#64748b" }}>to</span>
                       <input
                         type="time"
                         value={quietHoursEnd}
                         onChange={(e) => setQuietHoursEnd(e.target.value)}
-                        style={{ padding: "6px 8px", fontSize: "12px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                        style={{
+                          padding: "6px 8px",
+                          fontSize: "12px",
+                          borderRadius: "4px",
+                          border: "1px solid #cbd5e1",
+                        }}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
+                    <label
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        color: "#334155",
+                        display: "block",
+                        marginBottom: "4px",
+                      }}
+                    >
                       Merchant Timezone
                     </label>
                     <select
                       value={timezone}
                       onChange={(e) => setTimezone(e.target.value)}
-                      style={{ width: "100%", padding: "6px 8px", fontSize: "12px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                      style={{
+                        width: "100%",
+                        padding: "6px 8px",
+                        fontSize: "12px",
+                        borderRadius: "4px",
+                        border: "1px solid #cbd5e1",
+                      }}
                     >
                       <option value="America/New_York">America/New_York (UTC-5)</option>
                       <option value="America/Chicago">America/Chicago (UTC-6)</option>
@@ -1389,15 +1390,96 @@ export function OnboardingModal({
                 </div>
 
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155", display: "block", marginBottom: "4px" }}>
-                    Client Reply-To Email
+                  <label
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#334155",
+                      display: "block",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Client reply-to email{" "}
+                    <span aria-hidden="true" style={{ color: "#dc2626" }}>
+                      *
+                    </span>
                   </label>
                   <input
                     type="email"
+                    required
+                    aria-describedby="reply-to-help"
                     value={replyToEmail}
                     onChange={(e) => setReplyToEmail(e.target.value)}
-                    style={{ width: "100%", padding: "6px 8px", fontSize: "12px", borderRadius: "4px", border: "1px solid #cbd5e1" }}
+                    style={{
+                      width: "100%",
+                      padding: "6px 8px",
+                      fontSize: "12px",
+                      borderRadius: "4px",
+                      border: "1px solid #cbd5e1",
+                    }}
                   />
+                  <div
+                    id="reply-to-help"
+                    style={{ fontSize: "11px", color: "#64748b", marginTop: "5px" }}
+                  >
+                    Replies from client-facing drafts will use this address.
+                  </div>
+                </div>
+
+                <div
+                  role="group"
+                  aria-labelledby="notification-preferences-title"
+                  style={{
+                    marginTop: "14px",
+                    paddingTop: "14px",
+                    borderTop: "1px solid #e2e8f0",
+                  }}
+                >
+                  <div
+                    id="notification-preferences-title"
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#334155",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Notification preferences
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "12px 18px",
+                      fontSize: "12px",
+                      color: "#475569",
+                    }}
+                  >
+                    <label style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                      <input
+                        type="checkbox"
+                        checked={notifyEmail}
+                        onChange={(event) => setNotifyEmail(event.target.checked)}
+                      />
+                      Email alerts
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                      <input
+                        type="checkbox"
+                        checked={notifyInApp}
+                        onChange={(event) => setNotifyInApp(event.target.checked)}
+                      />
+                      In-app alerts
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                      <input
+                        type="checkbox"
+                        checked={dailyDigest}
+                        onChange={(event) => setDailyDigest(event.target.checked)}
+                      />
+                      Daily summary
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -1418,7 +1500,8 @@ export function OnboardingModal({
                     Starting Autonomy: Level 0 (Suggest Only)
                   </div>
                   <div style={{ fontSize: "11px", color: "#b45309", marginTop: "2px" }}>
-                    The agent proposes every action. Nothing is sent without your explicit 1-click approval.
+                    The agent proposes every action. Nothing is sent without your explicit 1-click
+                    approval.
                   </div>
                 </div>
                 <span
@@ -1442,185 +1525,74 @@ export function OnboardingModal({
           {stepIndex === 6 && (
             <div>
               <div style={{ marginBottom: "14px" }}>
-                <h3 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}>
-                  First Guided Approval · The “Aha!” Moment
+                <h3
+                  style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px", color: "#0f172a" }}
+                >
+                  Review setup and finish
                 </h3>
                 <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
-                  Your wizard ends inside the <strong>Agent Inbox</strong>. Review the full draft preview, policy verdict, and exact action below.
+                  Your workspace is configured with your chosen permissions and safety settings.
+                  Live client data and proposals will appear after PayPal history is available.
                 </p>
               </div>
 
-              {/* Proposal Card Preview */}
               <div
+                role="status"
                 style={{
-                  background: "#ffffff",
+                  padding: "20px 16px",
+                  background: "#f8fafc",
                   border: "1px solid #e2e8f0",
-                  borderRadius: "10px",
-                  overflow: "hidden",
-                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05)",
-                  marginBottom: "16px",
+                  borderRadius: "8px",
+                  color: "#475569",
+                  fontSize: "12px",
+                  lineHeight: "1.5",
                 }}
               >
-                {/* Proposal Header */}
+                <strong style={{ display: "block", color: "#0f172a", marginBottom: "5px" }}>
+                  Your workspace is ready for review.
+                </strong>
+                PayPilot will create proposals from your connected account after history is
+                available. You’ll review each draft and its policy checks before anything is sent.
                 <div
                   style={{
-                    padding: "12px 16px",
-                    background: "#f8fafc",
-                    borderBottom: "1px solid #e2e8f0",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: "8px",
+                    marginTop: "16px",
                   }}
                 >
-                  <div>
-                    <span style={{ fontSize: "11px", color: "#64748b", textTransform: "uppercase", fontWeight: 600 }}>
-                      Prioritized Proposal #PP-1049
-                    </span>
-                    <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>
-                      Send reminder to Priya Sharma ($2,200 overdue)
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      background: "#fef3c7",
-                      color: "#92400e",
-                      padding: "3px 8px",
-                      borderRadius: "6px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Requires L0 Approval
-                  </span>
-                </div>
-
-                {/* Policy Verdict Badges */}
-                <div style={{ padding: "10px 16px", background: "#f0fdf4", borderBottom: "1px solid #dcfce7", display: "flex", gap: "14px", fontSize: "11px", color: "#166534" }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <CheckCircle2 size={13} color="#16a34a" /> Policy Rule: Gentle Net-15
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <CheckCircle2 size={13} color="#16a34a" /> Quiet Hours: Passed (14:30)
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                    <CheckCircle2 size={13} color="#16a34a" /> Weekly Cap: 1 of 2 used
-                  </span>
-                </div>
-
-                {/* Tone Switcher & Preview */}
-                <div style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>Message Draft Preview</label>
-                    <div style={{ display: "flex", gap: "4px" }}>
-                      {(["gentle", "friendly", "firm"] as const).map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => setReminderTone(t)}
-                          style={{
-                            padding: "2px 8px",
-                            fontSize: "10px",
-                            borderRadius: "4px",
-                            textTransform: "capitalize",
-                            border: reminderTone === t ? "1px solid #6366f1" : "1px solid #e2e8f0",
-                            background: reminderTone === t ? "#ede9fe" : "#ffffff",
-                            color: reminderTone === t ? "#4338ca" : "#64748b",
-                            cursor: "pointer",
-                          }}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      padding: "12px",
-                      background: "#f8fafc",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                      lineHeight: "1.5",
-                      color: "#334155",
-                      fontFamily: "var(--font-sans, sans-serif)",
-                    }}
-                  >
-                    {reminderMessageText}
-                  </div>
-
-                  <div style={{ marginTop: "10px", fontSize: "11px", color: "#64748b", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Lock size={12} />
-                    <span>Exact PayPal API Call: </span>
-                    <code style={{ background: "#e2e8f0", padding: "1px 4px", borderRadius: "3px", color: "#1e293b" }}>
-                      invoices.send_reminder(id="PP-9D31C0", tone="{reminderTone}")
-                    </code>
-                  </div>
-                </div>
-
-                {/* Action Bar */}
-                <div
-                  style={{
-                    padding: "12px 16px",
-                    background: "#f8fafc",
-                    borderTop: "1px solid #e2e8f0",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setProposalDismissed(true);
-                      setProposalApproved(false);
-                    }}
-                  >
-                    Dismiss / Snooze
-                  </Button>
-
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <Button
-                      onClick={handleApproveProposal}
-                      disabled={proposalApproved || submittingAction}
+                  {[
+                    ["Workspace", businessName.trim() || "Name provided"],
+                    ["PayPal", connected ? "Connection active" : "Connection pending"],
+                    ["Safety", "Approval required"],
+                    ["History", "Sync pending"],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
                       style={{
-                        background: proposalApproved ? "#059669" : "#4f46e5",
-                        borderColor: proposalApproved ? "#059669" : "#4f46e5",
+                        padding: "9px 10px",
+                        borderRadius: "6px",
+                        background: "#ffffff",
+                        border: "1px solid #e2e8f0",
                       }}
                     >
-                      {submittingAction ? (
-                        <RefreshCw size={14} className="spin" />
-                      ) : proposalApproved ? (
-                        <Check size={14} />
-                      ) : (
-                        <Zap size={14} />
-                      )}
-                      {proposalApproved ? "Proposal Approved & Logged!" : "Approve & Send via PayPal"}
-                    </Button>
-                  </div>
+                      <div
+                        style={{
+                          fontSize: "10px",
+                          color: "#64748b",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                        }}
+                      >
+                        {label}
+                      </div>
+                      <div style={{ marginTop: "3px", fontWeight: 600, color: "#0f172a" }}>
+                        {value}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-
-              {proposalApproved && (
-                <div
-                  style={{
-                    padding: "12px 14px",
-                    background: "#ecfdf5",
-                    border: "1px solid #a7f3d0",
-                    borderRadius: "8px",
-                    color: "#065f46",
-                    fontSize: "12px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                  }}
-                >
-                  <CheckCircle2 size={16} />
-                  <span>
-                    <strong>“Aha!” Moment Achieved:</strong> The agent proposed, verified policy guardrails, and executed with your 1-click approval. Recorded in Sent view and immutable Audit Log.
-                  </span>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -1661,22 +1633,10 @@ export function OnboardingModal({
           </div>
 
           <div style={{ display: "flex", gap: "10px" }}>
-            {stepIndex === 1 && !consentGranted && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setConsentDeclined(true);
-                  handleNext();
-                }}
-              >
-                Skip to Demo Workspace
-              </Button>
-            )}
-
             <Button onClick={handleNext}>
               {stepIndex === steps.length - 1 ? (
                 <>
-                  <Check size={15} /> Finish & Open Agent Inbox
+                  <Check size={15} /> Finish setup
                 </>
               ) : (
                 <>

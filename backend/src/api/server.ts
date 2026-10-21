@@ -278,5 +278,5 @@ function actorFrom(request: IncomingMessage, body: Record<string, unknown>): Age
   const roles = Array.isArray(rolesValue)
     ? rolesValue.filter((role): role is string => typeof role === "string")
     : typeof rolesValue === "string" ? rolesValue.split(",").map((role) => role.trim()).filter(Boolean) : ["operator"];
-  return { userId: typeof body.userId === "string" ? body.userId : header(request, "x-user-id") ?? "demo-user", roles: roles.length > 0 ? roles : ["operator"] };
+  return { userId: typeof body.userId === "string" ? body.userId : header(request, "x-user-id") ?? "workspace-user", roles: roles.length > 0 ? roles : ["operator"] };
 }

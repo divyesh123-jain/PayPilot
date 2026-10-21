@@ -110,7 +110,6 @@ export function Sidebar({
             >
               <Icon size={17} />
               <span>{item.label}</span>
-              {item.key === "policies" && <em>2</em>}
             </motion.button>
           );
         })}
@@ -118,10 +117,10 @@ export function Sidebar({
       <div className="sidebar-spacer" />
       <div className="agent-status-card">
         <div className="status-card-top">
-          <span className="live-dot" /> <span>Agent is live</span>
+          <span className="live-dot" /> <span>Agent is ready</span>
           <Zap size={15} />
         </div>
-        <p>Monitoring PayPal in real time.</p>
+        <p>Waiting for a connected account.</p>
         <div className="agent-stack">
           <span className="agent-avatar" style={{ color: "#6c7bff", background: "#eceeff" }}>
             <LayoutList size={15} />
@@ -132,10 +131,14 @@ export function Sidebar({
           <span className="agent-avatar" style={{ color: "#d37bc9", background: "#fbeaf8" }}>
             <Zap size={15} />
           </span>
-          <span className="agent-stack-label">3 agents</span>
+          <span className="agent-stack-label">3 specialists</span>
         </div>
       </div>
-      <button className="nav-item onboarding-link" onClick={onOpenOnboarding} style={{ marginTop: "8px" }}>
+      <button
+        className="nav-item onboarding-link"
+        onClick={onOpenOnboarding}
+        style={{ marginTop: "8px" }}
+      >
         <Sparkles size={17} color="#6366f1" />
         <span style={{ fontWeight: 600, color: "#4f46e5" }}>Onboarding Wizard</span>
       </button>
@@ -154,8 +157,19 @@ export function Sidebar({
           <span>Landing Page</span>
         </button>
       )}
-      <div className="profile-row" style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div onClick={onOpenSettings} style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+      <div
+        className="profile-row"
+        style={{
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <div
+          onClick={onOpenSettings}
+          style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}
+        >
           <div className="profile-avatar">
             {userName
               ? userName
@@ -164,11 +178,18 @@ export function Sidebar({
                   .join("")
                   .slice(0, 2)
                   .toUpperCase()
-              : "AM"}
+              : "YW"}
           </div>
           <div style={{ minWidth: 0, overflow: "hidden" }}>
-            <strong style={{ display: "block", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-              {userName || "Alex Morgan"}
+            <strong
+              style={{
+                display: "block",
+                textOverflow: "ellipsis",
+                overflow: "hidden",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {userName || "Your name"}
             </strong>
             <span>{profile.type}</span>
           </div>

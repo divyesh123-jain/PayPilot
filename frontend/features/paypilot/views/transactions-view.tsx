@@ -49,11 +49,14 @@ export function TransactionsView({
         year: "numeric",
       }),
       name: transaction.counterparty ?? transaction.reference ?? transaction.id,
-      type: transaction.category ?? (transaction.direction === "inflow" ? "Payment received" : "Payment sent"),
+      type:
+        transaction.category ??
+        (transaction.direction === "inflow" ? "Payment received" : "Payment sent"),
       amount: `${transaction.signedAmountCents !== undefined && transaction.signedAmountCents >= 0 ? "+" : ""}$${(
         Math.abs(transaction.signedAmountCents ?? transaction.amountCents) / 100
       ).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
-      status: transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1) as TransactionStatus,
+      status: (transaction.status.charAt(0).toUpperCase() +
+        transaction.status.slice(1)) as TransactionStatus,
       reference: transaction.reference ?? transaction.id,
     }));
   }, [business.transactions, remoteTransactions]);
@@ -63,14 +66,20 @@ export function TransactionsView({
         .filter((transaction) =>
           `${transaction.name} ${transaction.type} ${transaction.reference}`
             .toLowerCase()
-            .includes(query.toLowerCase()),
+            .includes(query.toLowerCase())
         )
         .filter((transaction) => filter === "All statuses" || transaction.status === filter),
-    [transactions, filter, query],
+    [transactions, filter, query]
   );
   const toggleSelected = (reference: string) =>
-    setSelected((current) => current.includes(reference) ? current.filter((item) => item !== reference) : [...current, reference]);
-  const allVisibleSelected = filteredTransactions.length > 0 && filteredTransactions.every((item) => selected.includes(item.reference));
+    setSelected((current) =>
+      current.includes(reference)
+        ? current.filter((item) => item !== reference)
+        : [...current, reference]
+    );
+  const allVisibleSelected =
+    filteredTransactions.length > 0 &&
+    filteredTransactions.every((item) => selected.includes(item.reference));
   const exportCsv = () => {
     const header = ["Date", "Customer / account", "Type", "Amount", "Status", "Reference"];
     const rows = filteredTransactions.map((transaction) => [
@@ -103,8 +112,14 @@ export function TransactionsView({
           <Download size={15} /> Export CSV
         </Button>
       </div>
-      {loading && <div className="data-status loading-status">Loading the latest PayPal transactions…</div>}
-      {error && <div className="data-status error-status">Live data is unavailable. Showing the local replay dataset.</div>}
+      {loading && (
+        <div className="data-status loading-status">Loading the latest PayPal transactions…</div>
+      )}
+      {error && (
+        <div className="data-status error-status">
+          Live account data is unavailable. Connect the API to load transactions.
+        </div>
+      )}
       <div className="transaction-toolbar">
         <div className="search-input">
           <Search size={16} />
@@ -129,8 +144,8 @@ export function TransactionsView({
           <Filter size={15} /> More filters
         </Button>
         <span className="toolbar-count">
-           {filteredTransactions.length} of {transactions.length} records
-           {selected.length > 0 && ` · ${selected.length} selected`}
+          {filteredTransactions.length} of {transactions.length} records
+          {selected.length > 0 && ` · ${selected.length} selected`}
         </span>
       </div>
       <section className="panel table-panel">
@@ -143,7 +158,11 @@ export function TransactionsView({
                     type="checkbox"
                     aria-label="Select all transactions"
                     checked={allVisibleSelected}
-                    onChange={() => setSelected(allVisibleSelected ? [] : filteredTransactions.map((item) => item.reference))}
+                    onChange={() =>
+                      setSelected(
+                        allVisibleSelected ? [] : filteredTransactions.map((item) => item.reference)
+                      )
+                    }
                   />
                 </TableHead>
                 <TableHead>Date</TableHead>
@@ -198,13 +217,23 @@ export function TransactionsView({
           {filteredTransactions.length === 0 && (
             <div className="empty-state">
               <Search size={20} />
-              <strong>{transactions.length === 0 ? "No transactions yet" : "No transactions found"}</strong>
-              <span>{transactions.length === 0 ? "New PayPal activity will appear here." : "Try a different search or status filter."}</span>
+              <strong>
+                {transactions.length === 0 ? "No transactions yet" : "No transactions found"}
+              </strong>
+              <span>
+                {transactions.length === 0
+                  ? "New PayPal activity will appear here."
+                  : "Try a different search or status filter."}
+              </span>
             </div>
           )}
         </div>
         <div className="table-footer">
-          <span>Showing live Sandbox data · Last synced 2 min ago</span>
+          <span>
+            {remoteTransactions
+              ? "Showing connected PayPal data"
+              : "Connect PayPal to load account data"}
+          </span>
           <span>{filteredTransactions.length === 0 ? "0 / 0" : "1 / 1"}</span>
         </div>
       </section>

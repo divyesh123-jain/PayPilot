@@ -25,29 +25,7 @@ export type Obligation = {
   recurrence: "Monthly" | "One-time" | "Weekly";
 };
 
-const defaultObligations: Obligation[] = [
-  {
-    id: "ob-1",
-    name: "Co-Working Studio Rent",
-    dueDate: "Oct 24, 2026",
-    amount: 1800,
-    recurrence: "Monthly",
-  },
-  {
-    id: "ob-2",
-    name: "Contractor Payout · UI Developer",
-    dueDate: "Oct 27, 2026",
-    amount: 2000,
-    recurrence: "One-time",
-  },
-  {
-    id: "ob-3",
-    name: "Software & Cloud Tools (Figma/Adobe)",
-    dueDate: "Nov 01, 2026",
-    amount: 140,
-    recurrence: "Monthly",
-  },
-];
+const defaultObligations: Obligation[] = [];
 
 export function ForecastView({
   business,
@@ -70,19 +48,26 @@ export function ForecastView({
 
   const totalObligations = obligations.reduce((acc, ob) => acc + ob.amount, 0);
 
-  const forecast = remoteForecast && remoteForecast.points.length > 1
-    ? {
-        days: remoteForecast.points.map((point) => point.expectedBalanceCents / 100),
-        labels: remoteForecast.points.map((point) => new Date(`${point.date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" })),
-        low: remoteForecast.points.map((point) => point.lowBalanceCents / 100),
-        high: remoteForecast.points.map((point) => point.highBalanceCents / 100),
-        narrative: remoteForecast.narrative,
-        confidence: `${remoteForecast.points.at(-1)?.confidencePercent ?? 0}% confidence`,
-      }
-    : business.forecast;
-  const first = forecast.days[0] ?? 0;
-  const last = forecast.days[forecast.days.length - 1] ?? 0;
-  const range = last - first;
+  const forecast =
+    remoteForecast && remoteForecast.points.length > 1
+      ? {
+          days: remoteForecast.points.map((point) => point.expectedBalanceCents / 100),
+          labels: remoteForecast.points.map((point) =>
+            new Date(`${point.date}T00:00:00Z`).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })
+          ),
+          low: remoteForecast.points.map((point) => point.lowBalanceCents / 100),
+          high: remoteForecast.points.map((point) => point.highBalanceCents / 100),
+          narrative: remoteForecast.narrative,
+          confidence: `${remoteForecast.points.at(-1)?.confidencePercent ?? 0}% confidence`,
+        }
+      : business.forecast;
+  const first = forecast.days[0];
+  const last = forecast.days[forecast.days.length - 1];
+  const hasForecast = first !== undefined && last !== undefined && forecast.days.length > 1;
+  const range = hasForecast ? last - first : 0;
 
   const handleAddObligation = () => {
     if (!newObligationName || !newObligationAmount) return;
@@ -119,13 +104,15 @@ export function ForecastView({
       <div className="forecast-stat-grid">
         <ForecastStat
           label="Expected balance"
-          value={`$${last.toLocaleString()}`}
+          value={hasForecast ? `$${last.toLocaleString()}` : "—"}
           detail={forecast.confidence}
           tone="teal"
         />
         <ForecastStat
           label="7-day movement"
-          value={`${range >= 0 ? "+" : "−"}$${Math.abs(range).toLocaleString()}`}
+          value={
+            hasForecast ? `${range >= 0 ? "+" : "−"}$${Math.abs(range).toLocaleString()}` : "—"
+          }
           detail="vs. today"
           tone={range >= 0 ? "teal" : "red"}
         />
@@ -149,7 +136,13 @@ export function ForecastView({
           <Note
             icon={<CalendarDays size={15} />}
             title="Upcoming obligation"
-            detail={remoteForecast?.bufferBreached ? "The projected balance falls below your comfort buffer." : "Thursday · $3,800 expense is covered in the base case."}
+            detail={
+              remoteForecast?.bufferBreached
+                ? "The projected balance falls below your comfort buffer."
+                : hasForecast
+                  ? "No comfort-buffer breach is currently projected."
+                  : "Connect PayPal to calculate projected obligations."
+            }
           />
           <Note
             icon={range >= 0 ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}
@@ -164,7 +157,14 @@ export function ForecastView({
 
       {/* Scheduled Obligations Section (Gap #5) */}
       <section className="panel" style={{ marginTop: "20px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "14px",
+          }}
+        >
           <div>
             <span className="eyebrow">SCHEDULED OBLIGATIONS & LIABILITIES</span>
             <h2 style={{ fontSize: "16px", margin: "2px 0 0" }}>Planned Expenses</h2>
@@ -178,7 +178,17 @@ export function ForecastView({
         </div>
 
         {showAddForm && (
-          <div style={{ display: "flex", gap: "10px", padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", marginBottom: "14px" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: "10px",
+              padding: "12px",
+              background: "#f8fafc",
+              borderRadius: "8px",
+              border: "1px solid #e2e8f0",
+              marginBottom: "14px",
+            }}
+          >
             <Input
               placeholder="Obligation name (e.g. Contractor payout)"
               value={newObligationName}
@@ -198,7 +208,9 @@ export function ForecastView({
               onChange={(e) => setNewObligationDate(e.target.value)}
               style={{ flex: 1 }}
             />
-            <Button size="sm" onClick={handleAddObligation}>Save</Button>
+            <Button size="sm" onClick={handleAddObligation}>
+              Save
+            </Button>
           </div>
         )}
 
@@ -219,13 +231,19 @@ export function ForecastView({
             >
               <div>
                 <strong>{ob.name}</strong>
-                <div style={{ fontSize: "11px", color: "#64748b" }}>Due: {ob.dueDate} · {ob.recurrence}</div>
+                <div style={{ fontSize: "11px", color: "#64748b" }}>
+                  Due: {ob.dueDate} · {ob.recurrence}
+                </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <span style={{ fontWeight: 600, color: "#1e293b", fontSize: "14px" }}>
                   ${ob.amount.toLocaleString()}
                 </span>
-                <Button variant="icon" onClick={() => handleRemoveObligation(ob.id)} aria-label="Remove obligation">
+                <Button
+                  variant="icon"
+                  onClick={() => handleRemoveObligation(ob.id)}
+                  aria-label="Remove obligation"
+                >
                   <Trash2 size={14} color="#94a3b8" />
                 </Button>
               </div>
@@ -235,7 +253,11 @@ export function ForecastView({
       </section>
 
       {loading && <div className="data-status loading-status">Loading the cash model…</div>}
-      {error && <div className="data-status error-status">Live forecast unavailable. Showing the local scenario model.</div>}
+      {error && (
+        <div className="data-status error-status">
+          Live forecast unavailable. Connect the API to calculate from account data.
+        </div>
+      )}
     </div>
   );
 }

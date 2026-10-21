@@ -35,71 +35,7 @@ export type ClientItem = {
   notes?: string;
 };
 
-const initialClients: ClientItem[] = [
-  {
-    id: "client-priya",
-    name: "Priya Sharma",
-    company: "Studio Indigo",
-    email: "priya@studioindigo.design",
-    state: "Keep",
-    reliability: 4.1,
-    openAmount: "$2,200",
-    daysOverdue: 21,
-    lastContact: "Oct 12 · Email reminder #2",
-    nextStep: "Firm reminder proposal queued",
-    notes: "Historically pays 15-20 days late. Needs firm tone nudge.",
-  },
-  {
-    id: "client-acme",
-    name: "Acme Labs",
-    company: "Acme Bio Corp",
-    email: "billing@acmelabs.com",
-    state: "Keep",
-    reliability: 9.2,
-    openAmount: "$0",
-    daysOverdue: 0,
-    lastContact: "Oct 01 · Subscription invoice",
-    nextStep: "None · On schedule",
-  },
-  {
-    id: "client-techflow",
-    name: "TechFlow Systems",
-    company: "TechFlow Inc",
-    email: "ap@techflow.io",
-    state: "Keep",
-    reliability: 8.4,
-    openAmount: "$0",
-    daysOverdue: 0,
-    lastContact: "Sep 28 · Paid capture",
-    nextStep: "None · In good standing",
-  },
-  {
-    id: "client-jake",
-    name: "Jake Peralta",
-    company: "Nine-Nine Creative",
-    email: "jake@99creative.agency",
-    state: "Monitor only",
-    reliability: 6.8,
-    openAmount: "$850",
-    daysOverdue: 5,
-    lastContact: "Oct 10 · Milestone invoice",
-    nextStep: "Monitoring · Within grace period",
-    notes: "Monitor only mode set during onboarding.",
-  },
-  {
-    id: "client-marcus",
-    name: "Marcus Vance",
-    company: "Vance Vanguard",
-    email: "marcus@vance.co",
-    state: "Do not contact",
-    reliability: 2.5,
-    openAmount: "$1,400",
-    daysOverdue: 42,
-    lastContact: "Sep 15 · Direct invoice",
-    nextStep: "Blocked by merchant policy",
-    notes: "Direct contact handled by Alex Morgan personally. Zero automated reminders allowed.",
-  },
-];
+const initialClients: ClientItem[] = [];
 
 export function ClientsView() {
   const [clients, setClients] = useState<ClientItem[]>(initialClients);
@@ -120,9 +56,7 @@ export function ClientsView() {
   }, [clients, query, filterState]);
 
   const updateClientState = (id: string, newState: ClientItem["state"]) => {
-    setClients((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, state: newState } : c))
-    );
+    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, state: newState } : c)));
     if (selectedClient && selectedClient.id === id) {
       setSelectedClient((c) => (c ? { ...c, state: newState } : null));
     }
@@ -162,7 +96,8 @@ export function ClientsView() {
           <span className="eyebrow">RELATIONSHIPS & CONTACT GOVERNANCE</span>
           <h1>Clients</h1>
           <p>
-            Manage who PayPilot monitors, scores, and contacts. The permission engine strictly enforces client states.
+            Manage who PayPilot monitors, scores, and contacts. The permission engine strictly
+            enforces client states.
           </p>
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
@@ -170,7 +105,8 @@ export function ClientsView() {
             <UserCheck size={15} /> Messageable ({clients.filter((c) => c.state === "Keep").length})
           </Button>
           <Button variant="secondary" onClick={() => setFilterState("Do not contact")}>
-            <Ban size={15} /> Do Not Contact ({clients.filter((c) => c.state === "Do not contact").length})
+            <Ban size={15} /> Do Not Contact (
+            {clients.filter((c) => c.state === "Do not contact").length})
           </Button>
         </div>
       </div>
@@ -188,28 +124,48 @@ export function ClientsView() {
         <div style={{ display: "flex", gap: "6px" }}>
           <button
             className={`badge ${filterState === "all" ? "badge-primary" : ""}`}
-            style={{ cursor: "pointer", border: "1px solid #e2e8f0", padding: "6px 12px", borderRadius: "6px" }}
+            style={{
+              cursor: "pointer",
+              border: "1px solid #e2e8f0",
+              padding: "6px 12px",
+              borderRadius: "6px",
+            }}
             onClick={() => setFilterState("all")}
           >
             All ({clients.length})
           </button>
           <button
             className={`badge ${filterState === "Keep" ? "badge-primary" : ""}`}
-            style={{ cursor: "pointer", border: "1px solid #e2e8f0", padding: "6px 12px", borderRadius: "6px" }}
+            style={{
+              cursor: "pointer",
+              border: "1px solid #e2e8f0",
+              padding: "6px 12px",
+              borderRadius: "6px",
+            }}
             onClick={() => setFilterState("Keep")}
           >
             Keep
           </button>
           <button
             className={`badge ${filterState === "Monitor only" ? "badge-primary" : ""}`}
-            style={{ cursor: "pointer", border: "1px solid #e2e8f0", padding: "6px 12px", borderRadius: "6px" }}
+            style={{
+              cursor: "pointer",
+              border: "1px solid #e2e8f0",
+              padding: "6px 12px",
+              borderRadius: "6px",
+            }}
             onClick={() => setFilterState("Monitor only")}
           >
             Monitor only
           </button>
           <button
             className={`badge ${filterState === "Do not contact" ? "badge-primary" : ""}`}
-            style={{ cursor: "pointer", border: "1px solid #e2e8f0", padding: "6px 12px", borderRadius: "6px" }}
+            style={{
+              cursor: "pointer",
+              border: "1px solid #e2e8f0",
+              padding: "6px 12px",
+              borderRadius: "6px",
+            }}
             onClick={() => setFilterState("Do not contact")}
           >
             Do not contact
@@ -221,7 +177,15 @@ export function ClientsView() {
       <section className="panel" style={{ padding: 0, overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
           <thead>
-            <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", color: "#64748b", fontSize: "12px" }}>
+            <tr
+              style={{
+                background: "#f8fafc",
+                borderBottom: "1px solid #e2e8f0",
+                textAlign: "left",
+                color: "#64748b",
+                fontSize: "12px",
+              }}
+            >
               <th style={{ padding: "12px 16px" }}>CLIENT & COMPANY</th>
               <th style={{ padding: "12px 16px" }}>EMAIL</th>
               <th style={{ padding: "12px 16px" }}>STATE</th>
@@ -233,82 +197,113 @@ export function ClientsView() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((client) => (
-              <tr
-                key={client.id}
-                style={{
-                  borderBottom: "1px solid #f1f5f9",
-                  cursor: "pointer",
-                  transition: "background 0.15s",
-                }}
-                onClick={() => setSelectedClient(client)}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <td style={{ padding: "12px 16px" }}>
-                  <strong>{client.name}</strong>
-                  <div style={{ fontSize: "11px", color: "#64748b" }}>{client.company}</div>
-                </td>
-                <td style={{ padding: "12px 16px", color: "#475569" }}>{client.email}</td>
-                <td style={{ padding: "12px 16px" }}>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      padding: "3px 8px",
-                      borderRadius: "12px",
-                      background:
-                        client.state === "Keep"
-                          ? "#ecfdf5"
-                          : client.state === "Do not contact"
-                          ? "#fef2f2"
-                          : "#fffbeb",
-                      color:
-                        client.state === "Keep"
-                          ? "#065f46"
-                          : client.state === "Do not contact"
-                          ? "#991b1b"
-                          : "#92400e",
-                    }}
-                  >
-                    {client.state}
-                  </span>
-                </td>
-                <td style={{ padding: "12px 16px" }}>
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      color: client.reliability >= 8 ? "#16a34a" : client.reliability >= 5 ? "#d97706" : "#dc2626",
-                    }}
-                  >
-                    {client.reliability} / 10
-                  </span>
-                </td>
-                <td style={{ padding: "12px 16px", fontWeight: 600 }}>{client.openAmount}</td>
-                <td style={{ padding: "12px 16px" }}>
-                  {client.daysOverdue > 0 ? (
-                    <span style={{ color: "#dc2626", fontWeight: 600 }}>{client.daysOverdue} days</span>
-                  ) : (
-                    <span style={{ color: "#16a34a" }}>Current</span>
-                  )}
-                </td>
-                <td style={{ padding: "12px 16px", color: "#64748b", maxWidth: "220px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {client.nextStep}
-                </td>
-                <td style={{ padding: "12px 16px", textAlign: "right" }}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedClient(client);
-                    }}
-                  >
-                    View Details
-                  </Button>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={8}>
+                  <div className="empty-state" style={{ margin: "28px 16px" }}>
+                    <Users size={22} />
+                    <strong>No clients imported</strong>
+                    <p>
+                      Connect PayPal and complete the first sync to build your client list from real
+                      transactions.
+                    </p>
+                  </div>
                 </td>
               </tr>
-            ))}
+            ) : (
+              filtered.map((client) => (
+                <tr
+                  key={client.id}
+                  style={{
+                    borderBottom: "1px solid #f1f5f9",
+                    cursor: "pointer",
+                    transition: "background 0.15s",
+                  }}
+                  onClick={() => setSelectedClient(client)}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <td style={{ padding: "12px 16px" }}>
+                    <strong>{client.name}</strong>
+                    <div style={{ fontSize: "11px", color: "#64748b" }}>{client.company}</div>
+                  </td>
+                  <td style={{ padding: "12px 16px", color: "#475569" }}>{client.email}</td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        padding: "3px 8px",
+                        borderRadius: "12px",
+                        background:
+                          client.state === "Keep"
+                            ? "#ecfdf5"
+                            : client.state === "Do not contact"
+                              ? "#fef2f2"
+                              : "#fffbeb",
+                        color:
+                          client.state === "Keep"
+                            ? "#065f46"
+                            : client.state === "Do not contact"
+                              ? "#991b1b"
+                              : "#92400e",
+                      }}
+                    >
+                      {client.state}
+                    </span>
+                  </td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        color:
+                          client.reliability >= 8
+                            ? "#16a34a"
+                            : client.reliability >= 5
+                              ? "#d97706"
+                              : "#dc2626",
+                      }}
+                    >
+                      {client.reliability} / 10
+                    </span>
+                  </td>
+                  <td style={{ padding: "12px 16px", fontWeight: 600 }}>{client.openAmount}</td>
+                  <td style={{ padding: "12px 16px" }}>
+                    {client.daysOverdue > 0 ? (
+                      <span style={{ color: "#dc2626", fontWeight: 600 }}>
+                        {client.daysOverdue} days
+                      </span>
+                    ) : (
+                      <span style={{ color: "#16a34a" }}>Current</span>
+                    )}
+                  </td>
+                  <td
+                    style={{
+                      padding: "12px 16px",
+                      color: "#64748b",
+                      maxWidth: "220px",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {client.nextStep}
+                  </td>
+                  <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedClient(client);
+                      }}
+                    >
+                      View Details
+                    </Button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </section>
@@ -317,7 +312,11 @@ export function ClientsView() {
       {selectedClient && (
         <div className="what-if-overlay" role="dialog" aria-modal="true">
           <div className="what-if-dialog" style={{ maxWidth: "560px", width: "95%" }}>
-            <button className="what-if-close" onClick={() => setSelectedClient(null)} aria-label="Close">
+            <button
+              className="what-if-close"
+              onClick={() => setSelectedClient(null)}
+              aria-label="Close"
+            >
               <X size={17} />
             </button>
 
@@ -330,8 +329,18 @@ export function ClientsView() {
             </div>
 
             {/* State Selector */}
-            <div style={{ padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", marginBottom: "16px" }}>
-              <div style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "8px" }}>
+            <div
+              style={{
+                padding: "12px",
+                background: "#f8fafc",
+                borderRadius: "8px",
+                border: "1px solid #e2e8f0",
+                marginBottom: "16px",
+              }}
+            >
+              <div
+                style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "8px" }}
+              >
                 OUTBOUND CONTACT PERMISSION
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
@@ -360,40 +369,98 @@ export function ClientsView() {
                 {selectedClient.state === "Keep"
                   ? "Monitored, scored and eligible for approved reminders."
                   : selectedClient.state === "Monitor only"
-                  ? "Scored in forecasts; never sent any outbound message."
-                  : "Hard blocked: Permission engine denies 100% of outbound messages."}
+                    ? "Scored in forecasts; never sent any outbound message."
+                    : "Hard blocked: Permission engine denies 100% of outbound messages."}
               </div>
             </div>
 
             {/* Stats */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "16px" }}>
-              <div style={{ padding: "12px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "6px" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "10px",
+                marginBottom: "16px",
+              }}
+            >
+              <div
+                style={{
+                  padding: "12px",
+                  background: "#fff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "6px",
+                }}
+              >
                 <span className="eyebrow">RELIABILITY SCORE</span>
-                <strong style={{ fontSize: "18px", color: selectedClient.reliability >= 8 ? "#16a34a" : selectedClient.reliability >= 5 ? "#d97706" : "#dc2626" }}>
+                <strong
+                  style={{
+                    fontSize: "18px",
+                    color:
+                      selectedClient.reliability >= 8
+                        ? "#16a34a"
+                        : selectedClient.reliability >= 5
+                          ? "#d97706"
+                          : "#dc2626",
+                  }}
+                >
                   {selectedClient.reliability} / 10
                 </strong>
-                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>Derived from PayPal timing</div>
+                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+                  Derived from PayPal timing
+                </div>
               </div>
-              <div style={{ padding: "12px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "6px" }}>
+              <div
+                style={{
+                  padding: "12px",
+                  background: "#fff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "6px",
+                }}
+              >
                 <span className="eyebrow">OPEN AMOUNT</span>
-                <strong style={{ fontSize: "18px", color: "#1e293b" }}>{selectedClient.openAmount}</strong>
+                <strong style={{ fontSize: "18px", color: "#1e293b" }}>
+                  {selectedClient.openAmount}
+                </strong>
                 <div style={{ fontSize: "11px", color: "#dc2626", marginTop: "2px" }}>
-                  {selectedClient.daysOverdue > 0 ? `${selectedClient.daysOverdue} days past due` : "Current"}
+                  {selectedClient.daysOverdue > 0
+                    ? `${selectedClient.daysOverdue} days past due`
+                    : "Current"}
                 </div>
               </div>
             </div>
 
             {/* Promise to Pay */}
-            <div style={{ padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", marginBottom: "16px" }}>
-              <div style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
+            <div
+              style={{
+                padding: "12px",
+                background: "#f8fafc",
+                borderRadius: "8px",
+                border: "1px solid #e2e8f0",
+                marginBottom: "16px",
+              }}
+            >
+              <div
+                style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}
+              >
                 LOG PROMISE TO PAY
               </div>
               <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px" }}>
-                If the client promised to pay by a certain date, reminders are frozen until that day.
+                If the client promised to pay by a certain date, reminders are frozen until that
+                day.
               </div>
               {selectedClient.promiseDate ? (
-                <div style={{ padding: "8px 12px", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "6px", fontSize: "12px", color: "#065f46" }}>
-                  ✓ <strong>Promise logged:</strong> Payment expected by {selectedClient.promiseDate}. Outbound reminders held.
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    background: "#ecfdf5",
+                    border: "1px solid #a7f3d0",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    color: "#065f46",
+                  }}
+                >
+                  ✓ <strong>Promise logged:</strong> Payment expected by{" "}
+                  {selectedClient.promiseDate}. Outbound reminders held.
                 </div>
               ) : (
                 <div style={{ display: "flex", gap: "8px" }}>
@@ -412,7 +479,17 @@ export function ClientsView() {
 
             {/* Notes */}
             {selectedClient.notes && (
-              <div style={{ fontSize: "12px", color: "#64748b", background: "#fff", border: "1px solid #e2e8f0", padding: "10px", borderRadius: "6px", marginBottom: "16px" }}>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "#64748b",
+                  background: "#fff",
+                  border: "1px solid #e2e8f0",
+                  padding: "10px",
+                  borderRadius: "6px",
+                  marginBottom: "16px",
+                }}
+              >
                 <strong>Internal Note:</strong> {selectedClient.notes}
               </div>
             )}

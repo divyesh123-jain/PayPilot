@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Ban, Check, Clock3, ExternalLink, ShieldAlert, Sparkles } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, Inbox, ShieldCheck } from "lucide-react";
 import { Button } from "@/frontend/components/ui/button";
 import { Card } from "@/frontend/components/ui/card";
 import { Badge } from "@/frontend/components/ui/badge";
@@ -15,13 +15,20 @@ export type ApprovalItem = {
   call: string;
 };
 
-export const approvalItem: ApprovalItem = {
-  title: "Send a reminder to Priya Sharma",
-  detail: "A firm, personal reminder for the overdue web design invoice.",
-  amount: "$2,200",
-  policy: "Email reminders · max 2 per client / week · approval required",
-  call: "send_reminder(client=Priya Sharma, invoice=PP-9D31C0, tone=firm)",
-};
+function toApprovalItem(proposal: ApiProposal): ApprovalItem {
+  return {
+    title: proposal.action
+      ? `Review ${proposal.action.replaceAll("_", " ")}`
+      : "Review proposed action",
+    detail: proposal.rationale || "PayPilot prepared an action from connected account activity.",
+    amount:
+      proposal.amountCents === undefined
+        ? "—"
+        : `$${(proposal.amountCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+    policy: proposal.policyDecision.reason,
+    call: `${proposal.action || "action"}(proposal=${proposal.id})`,
+  };
+}
 
 export function InboxView({
   business,
@@ -40,40 +47,53 @@ export function InboxView({
   onApprove: (item: ApprovalItem) => void;
   onOpenApproval: (item: ApprovalItem) => void;
 }) {
-  const openProposals = remoteProposals?.filter((proposal) => proposal.status === "proposed").length;
+  const proposals = remoteProposals?.filter((proposal) => proposal.status === "proposed") ?? [];
+
   return (
     <div className="view-content inbox-view">
       <div className="welcome-row">
         <div>
-          <span className="eyebrow">AGENT INBOX · WEDNESDAY, OCTOBER 15, 2026</span>
-          <h1>
-            Good morning, Alex <span className="wave">✦</span>
-          </h1>
-          <p>PayPilot sorted the signal from the noise. Here are the decisions that need you.</p>
+          <span className="eyebrow">AGENT INBOX</span>
+          <h1>Your decisions</h1>
+          <p>PayPilot will place account-backed proposals here for your review.</p>
         </div>
         <div className="welcome-actions">
           <Button variant="secondary" onClick={onAsk}>
-            Ask a question
+            Ask about your account
           </Button>
-          <Button onClick={() => onOpenApproval(approvalItem)}>
-            <Check size={15} /> Review approval
+          <Button onClick={onAsk}>
+            <Check size={15} /> Ask PayPilot
           </Button>
         </div>
       </div>
-      {loading && <div className="data-status loading-status">Syncing agent decisions…</div>}
-      {error && <div className="data-status error-status">The API is offline. Showing the deterministic decision queue.</div>}
+      {loading && <div className="data-status loading-status">Syncing connected account…</div>}
+      {error && (
+        <div className="data-status error-status">
+          Live account data is unavailable. Connect the API to load decisions.
+        </div>
+      )}
 
       <section className="inbox-hero panel">
         <div className="inbox-hero-copy">
           <div className="inbox-kicker">
-            <span className="live-dot" /> AGENT TEAM · 3 ONLINE
+            <span className="live-dot" /> AGENT TEAM · READY
           </div>
           <h2>
-            Your financial team found <strong>3 decisions</strong> for {business.name}.
+            {proposals.length > 0 ? (
+              <>
+                Your financial team found{" "}
+                <strong>
+                  {proposals.length} decision{proposals.length === 1 ? "" : "s"}
+                </strong>{" "}
+                for {business.name}.
+              </>
+            ) : (
+              <>Your decision queue is ready for {business.name}.</>
+            )}
           </h2>
           <p>
-            Scout watched the activity, Strategist ranked the impact, and Executor prepared safe
-            drafts. Nothing moves without your permission.
+            Scout watches connected activity, Strategist ranks the impact, and Executor prepares
+            safe drafts. Nothing moves without your permission.
           </p>
           <Button variant="dark" onClick={onAsk}>
             Open Ask PayPilot <ArrowRight size={15} />
@@ -82,18 +102,18 @@ export function InboxView({
         <div className="inbox-signal-grid">
           <div>
             <span>Needs approval</span>
-            <strong>1</strong>
+            <strong>{proposals.length}</strong>
             <small>ready to review</small>
           </div>
           <div>
             <span>Blocked by policy</span>
-            <strong>1</strong>
-            <small>no action taken</small>
+            <strong>—</strong>
+            <small>after data sync</small>
           </div>
           <div>
             <span>Watching</span>
-            <strong>12</strong>
-            <small>accounts monitored</small>
+            <strong>—</strong>
+            <small>after data sync</small>
           </div>
         </div>
       </section>
@@ -102,75 +122,55 @@ export function InboxView({
         <section className="panel inbox-feed-panel">
           <div className="panel-header inbox-section-header">
             <div>
-              <span className="eyebrow">PRIORITIZED SIGNALS</span>
+              <span className="eyebrow">ACCOUNT-BACKED SIGNALS</span>
               <h2>Decision queue</h2>
             </div>
-             <Badge variant="soft">{openProposals ?? 3} open</Badge>
+            <Badge variant="soft">{proposals.length} open</Badge>
           </div>
-          <div className="inbox-item approval-item">
-            <div className="inbox-item-icon purple">
-              <Sparkles size={17} />
-            </div>
-            <div className="inbox-item-copy">
-              <div className="inbox-item-title">
-                <strong>{approvalItem.title}</strong>
-                <time>8 min ago</time>
-              </div>
+          {proposals.length === 0 ? (
+            <div className="empty-state" style={{ margin: "18px 0" }}>
+              <Inbox size={22} />
+              <strong>No proposals yet</strong>
               <p>
-                {approvalItem.detail} PayPilot estimates a{" "}
-                <b>72% chance of payment within 48 hours.</b>
+                Connect PayPal and sync your account. PayPilot will show only decisions based on
+                your real activity.
               </p>
-              <div className="inbox-item-actions">
-                <Button size="sm" onClick={() => onOpenApproval(approvalItem)}>
-                  Review approval <ArrowRight size={13} />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => onApprove(approvalItem)}>
-                  Approve draft
-                </Button>
-              </div>
             </div>
-          </div>
-          <div className="inbox-item">
-            <div className="inbox-item-icon amber">
-              <Clock3 size={17} />
-            </div>
-            <div className="inbox-item-copy">
-              <div className="inbox-item-title">
-                <strong>Forecast shifted for Thursday</strong>
-                <time>31 min ago</time>
-              </div>
-              <p>{business.forecast.narrative}</p>
-              <span className="inbox-meta">
-                <Check size={13} /> No action needed · {business.forecast.confidence}
-              </span>
-            </div>
-          </div>
-          <div className="inbox-item blocked-item">
-            <div className="inbox-item-icon red">
-              <Ban size={17} />
-            </div>
-            <div className="inbox-item-copy">
-              <div className="inbox-item-title">
-                <strong>Third reminder blocked by policy</strong>
-                <time>2 hr ago</time>
-              </div>
-              <p>
-                Executor stopped the action because this client already received two reminders this
-                week. It is queued for Monday at 09:00.
-              </p>
-              <span className="blocked-label">
-                <ShieldAlert size={13} /> Blocked safely · no external call made
-              </span>
-            </div>
-          </div>
+          ) : (
+            proposals.map((proposal) => {
+              const item = toApprovalItem(proposal);
+              return (
+                <div className="inbox-item approval-item" key={proposal.id}>
+                  <div className="inbox-item-icon purple">
+                    <ShieldCheck size={17} />
+                  </div>
+                  <div className="inbox-item-copy">
+                    <div className="inbox-item-title">
+                      <strong>{item.title}</strong>
+                      <time>{proposal.status}</time>
+                    </div>
+                    <p>{item.detail}</p>
+                    <div className="inbox-item-actions">
+                      <Button size="sm" onClick={() => onOpenApproval(item)}>
+                        Review proposal <ArrowRight size={13} />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => onApprove(item)}>
+                        Approve
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </section>
 
         <aside className="inbox-side">
           <Card className="deep-preset-card">
             <div className="panel-header">
               <div>
-                <span className="eyebrow">DEEP PRESETS</span>
-                <h2>See the story behind the signal</h2>
+                <span className="eyebrow">WHAT PAYPILOT WILL WATCH</span>
+                <h2>Connected account signals</h2>
               </div>
               <ExternalLink size={15} />
             </div>
@@ -180,8 +180,8 @@ export function InboxView({
           </Card>
           <Card className="quick-ask-card">
             <span className="eyebrow">QUICK ASK</span>
-            <h2>What changed since yesterday?</h2>
-            <p>Let PayPilot explain the meaningful movements across your accounts.</p>
+            <h2>Need context?</h2>
+            <p>Ask PayPilot about your connected records once the first sync completes.</p>
             <Button variant="secondary" className="full-button" onClick={onAsk}>
               Ask PayPilot <ArrowRight size={14} />
             </Button>
@@ -194,13 +194,13 @@ export function InboxView({
 
 function PresetRow({ title, detail, tone }: { title: string; detail: string; tone: string }) {
   return (
-    <button className="preset-row">
+    <div className="preset-row">
       <span className={`preset-dot ${tone}`} />
       <span>
         <strong>{title}</strong>
         <small>{detail}</small>
       </span>
       <ArrowRight size={14} />
-    </button>
+    </div>
   );
 }

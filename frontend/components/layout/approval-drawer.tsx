@@ -47,7 +47,11 @@ export function ApprovalDrawer({
   return (
     <>
       <button className="drawer-backdrop" aria-label="Close approval drawer" onClick={onClose} />
-      <aside className="approval-drawer" aria-label="Approval preview" style={{ maxWidth: "520px", width: "95%" }}>
+      <aside
+        className="approval-drawer"
+        aria-label="Approval preview"
+        style={{ maxWidth: "520px", width: "95%" }}
+      >
         <div className="approval-drawer-header">
           <div>
             <span className="eyebrow">EXECUTOR · APPROVAL REQUIRED</span>
@@ -79,14 +83,31 @@ export function ApprovalDrawer({
             <h3 style={{ fontSize: "18px", margin: "0 0 6px" }}>
               {secondsLeft > 0 ? `Holding in Outbox (${secondsLeft}s)` : "Dispatched to Sent Queue"}
             </h3>
-            <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5", maxWidth: "380px", margin: "0 auto 20px" }}>
+            <p
+              style={{
+                color: "#64748b",
+                fontSize: "13px",
+                lineHeight: "1.5",
+                maxWidth: "380px",
+                margin: "0 auto 20px",
+              }}
+            >
               {secondsLeft > 0
                 ? "The reminder is currently held in the outbox. The system re-checks policy rules and PayPal connection health before dispatching."
                 : "The 30-second hold elapsed. Policy check passed. Reminder delivered to Sent messages."}
             </p>
 
             {secondsLeft > 0 && (
-              <div style={{ width: "100%", height: "6px", background: "#e2e8f0", borderRadius: "3px", overflow: "hidden", marginBottom: "20px" }}>
+              <div
+                style={{
+                  width: "100%",
+                  height: "6px",
+                  background: "#e2e8f0",
+                  borderRadius: "3px",
+                  overflow: "hidden",
+                  marginBottom: "20px",
+                }}
+              >
                 <div
                   style={{
                     height: "100%",
@@ -122,18 +143,59 @@ export function ApprovalDrawer({
             </div>
 
             {/* Email Preview Section */}
-            <div className="approval-section" style={{ background: "#f8fafc", borderRadius: "8px", padding: "12px", border: "1px solid #e2e8f0" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>
-                <span>OUTBOUND EMAIL DRAFT</span>
-                <span style={{ color: "#6366f1" }}>Channel: PayPal Invoicing v2</span>
+            <div
+              className="approval-section"
+              style={{
+                background: "#f8fafc",
+                borderRadius: "8px",
+                padding: "12px",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#475569",
+                  marginBottom: "6px",
+                }}
+              >
+                <span>OUTBOUND ACTION PREVIEW</span>
+                <span style={{ color: "#6366f1" }}>Approval required</span>
               </div>
-              <div style={{ fontSize: "12px", color: "#64748b", display: "flex", flexDirection: "column", gap: "2px", borderBottom: "1px solid #e2e8f0", paddingBottom: "6px", marginBottom: "8px" }}>
-                <div><strong>To:</strong> Priya Sharma &lt;priya@studioindigo.design&gt;</div>
-                <div><strong>From:</strong> Alex Morgan via PayPilot &lt;alex@designstudio.com&gt;</div>
-                <div><strong>Subject:</strong> Reminder: Overdue invoice PP-9D31C0 ({item.amount})</div>
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "#64748b",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                  borderBottom: "1px solid #e2e8f0",
+                  paddingBottom: "6px",
+                  marginBottom: "8px",
+                }}
+              >
+                <div>
+                  <strong>To:</strong> Recipient from connected account
+                </div>
+                <div>
+                  <strong>From:</strong> Your configured workspace identity
+                </div>
+                <div>
+                  <strong>Subject:</strong> {item.title} · {item.amount}
+                </div>
               </div>
-              <div style={{ fontSize: "12px", color: "#334155", lineHeight: "1.5", fontStyle: "italic" }}>
-                "Hi Priya, gentle reminder that invoice PP-9D31C0 ({item.amount}) was due 21 days ago. Please click below to review and pay securely via PayPal."
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "#334155",
+                  lineHeight: "1.5",
+                  fontStyle: "italic",
+                }}
+              >
+                {item.detail}
               </div>
             </div>
 
@@ -148,7 +210,7 @@ export function ApprovalDrawer({
                 </b>
               </div>
               <p>{item.policy}</p>
-              <small>Rate limit: 1 of 2 used this rolling 7 days. Time window: 09:00–18:00 client timezone.</small>
+              <small>PayPilot will run the policy check again immediately before execution.</small>
             </div>
 
             {/* Exact Call Preview */}
@@ -167,7 +229,7 @@ export function ApprovalDrawer({
               </div>
               <code>{item.call}</code>
               <div className="approval-amount">
-                <span>Invoice value</span>
+                <span>Proposed amount</span>
                 <strong>{item.amount}</strong>
               </div>
             </div>
@@ -175,7 +237,8 @@ export function ApprovalDrawer({
             <div className="approval-undo">
               <Clock size={14} />
               <span>
-                Approving starts a <strong>30-second hold</strong>. You can cancel before dispatch.
+                Approval records your decision. Nothing executes until the final policy check
+                passes.
               </span>
             </div>
 

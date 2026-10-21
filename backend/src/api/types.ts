@@ -83,6 +83,11 @@ export interface OnboardingState {
     timezone?: string;
     replyToEmail?: string;
   };
+  readonly notifications?: {
+    email?: boolean;
+    inApp?: boolean;
+    dailyDigest?: boolean;
+  };
 }
 
 export interface ConnectionState {

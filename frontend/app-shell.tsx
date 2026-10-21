@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { NotificationDrawer, BusinessContext, Topbar } from "@/frontend/components/layout/topbar";
 import { ApprovalDrawer } from "@/frontend/components/layout/approval-drawer";
 import { Sidebar } from "@/frontend/components/layout/sidebar";
-import { InboxView, approvalItem, type ApprovalItem } from "@/frontend/features/paypilot/views/inbox-view";
+import { InboxView, type ApprovalItem } from "@/frontend/features/paypilot/views/inbox-view";
 import { ClientsView } from "@/frontend/features/paypilot/views/clients-view";
 import { AgentView } from "@/frontend/features/paypilot/views/agent-view";
 import { TransactionsView } from "@/frontend/features/paypilot/views/transactions-view";
@@ -23,7 +23,6 @@ import { SignInModal } from "@/frontend/features/auth/sign-in-modal";
 import { WelcomeModal } from "@/frontend/features/auth/welcome-modal";
 import { businessProfiles } from "@/frontend/features/paypilot/data";
 import type { BusinessKey, ViewKey } from "@/frontend/features/paypilot/types";
-import { Sparkles } from "lucide-react";
 import {
   approveProposal,
   getAuditEvents,
@@ -66,9 +65,9 @@ export default function PayPilotApp() {
   const [approved, setApproved] = useState(false);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
-  const [onboardingCompleted, setOnboardingCompleted] = useState(true);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [syncLabel, setSyncLabel] = useState("Local replay ready");
+  const [syncLabel, setSyncLabel] = useState("Waiting for account connection");
   const [proposalId, setProposalId] = useState<string | null>(null);
   const [remoteTransactions, setRemoteTransactions] = useState<ApiTransaction[] | null>(null);
   const [remoteFindings, setRemoteFindings] = useState<ApiFinding[] | null>(null);
@@ -78,7 +77,19 @@ export default function PayPilotApp() {
   const [remoteAuditEvents, setRemoteAuditEvents] = useState<ApiAuditEvent[] | null>(null);
   const [remoteLoading, setRemoteLoading] = useState(true);
   const [remoteError, setRemoteError] = useState<string | null>(null);
-  const business = useMemo(() => businessProfiles[businessKey], [businessKey]);
+  const business = useMemo(() => {
+    const base = businessProfiles[businessKey];
+    const workspaceName = currentUser?.businessName?.trim() || base.name;
+    const initials =
+      workspaceName
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase() || "YW";
+    return { ...base, name: workspaceName, initials };
+  }, [businessKey, currentUser?.businessName]);
 
   const loadRemoteData = async () => {
     setRemoteLoading(true);
@@ -99,7 +110,12 @@ export default function PayPilotApp() {
     if (proposals.status === "fulfilled") setRemoteProposals(proposals.value.data);
     if (auditEvents.status === "fulfilled") setRemoteAuditEvents(auditEvents.value.data);
     const failed = results.find((result) => result.status === "rejected");
-    if (failed?.status === "rejected") setRemoteError(failed.reason instanceof Error ? failed.reason.message : "Some live data could not be loaded.");
+    if (failed?.status === "rejected")
+      setRemoteError(
+        failed.reason instanceof Error
+          ? failed.reason.message
+          : "Some live data could not be loaded."
+      );
     setRemoteLoading(false);
   };
 
@@ -110,7 +126,7 @@ export default function PayPilotApp() {
         if (active) setSyncLabel(`API connected · ${session.paymentMode}`);
       })
       .catch(() => {
-        if (active) setSyncLabel("Local replay ready");
+        if (active) setSyncLabel("Waiting for account connection");
       });
 
     void loadRemoteData();
@@ -165,40 +181,14 @@ export default function PayPilotApp() {
     setOnboardingOpen(false);
   };
 
-  const handleSignInSuccess = (user: {
-    name: string;
-    email: string;
-    businessName: string;
-    businessKey: BusinessKey;
-  }) => {
-    const session = { ...user, isAuthenticated: true };
-    setCurrentUser(session);
-    try {
-      localStorage.setItem("paypilot_user_session", JSON.stringify(session));
-      localStorage.setItem("paypilot_onboarding_completed", "true");
-    } catch {
-      // storage
-    }
-    setOnboardingCompleted(true);
-    setBusinessKey(user.businessKey);
-    setPageMode("dashboard");
-    setWelcomeOpen(true);
-    void setBusinessSession(user.businessKey);
-    void loadRemoteData();
-  };
-
   const handleOnboardingComplete = (userInfo?: {
     name: string;
     email: string;
     businessName: string;
     businessKey: BusinessKey;
   }) => {
-    const user = userInfo || {
-      name: "Alex Morgan",
-      email: "alex@morgancreative.agency",
-      businessName: "Morgan Creative Studio",
-      businessKey,
-    };
+    if (!userInfo) return;
+    const user = userInfo;
     const session = { ...user, isAuthenticated: true };
     setCurrentUser(session);
     try {
@@ -211,7 +201,7 @@ export default function PayPilotApp() {
     setBusinessKey(user.businessKey);
     setPageMode("dashboard");
     setWelcomeOpen(true);
-    setSyncLabel("Onboarding complete · Active");
+    setSyncLabel("Workspace created · Connect PayPal to begin");
     void loadRemoteData();
   };
 
@@ -243,7 +233,7 @@ export default function PayPilotApp() {
     }
     setOnboardingCompleted(false);
     setOnboardingOpen(true);
-    setSyncLabel("Onboarding reset · Newbie mode active");
+    setSyncLabel("Setup reset · ready for your workspace details");
   };
 
   const handleBusinessChange = (nextKey: BusinessKey) => {
@@ -264,8 +254,11 @@ export default function PayPilotApp() {
       try {
         await rejectProposal(proposalId);
         setSyncLabel("Draft rejected and logged");
-        setRemoteProposals((current) =>
-          current?.map((proposal) => proposal.id === proposalId ? { ...proposal, status: "rejected" } : proposal) ?? current,
+        setRemoteProposals(
+          (current) =>
+            current?.map((proposal) =>
+              proposal.id === proposalId ? { ...proposal, status: "rejected" } : proposal
+            ) ?? current
         );
       } catch {
         setSyncLabel("Draft kept locally");
@@ -303,8 +296,9 @@ export default function PayPilotApp() {
     if (activeProposalId) {
       try {
         const updated = await approveProposal(activeProposalId);
-        setRemoteProposals((current) =>
-          current?.map((proposal) => proposal.id === updated.id ? updated : proposal) ?? current,
+        setRemoteProposals(
+          (current) =>
+            current?.map((proposal) => (proposal.id === updated.id ? updated : proposal)) ?? current
         );
         setSyncLabel("Approval recorded by API");
       } catch {
@@ -328,7 +322,6 @@ export default function PayPilotApp() {
         <SignInModal
           isOpen={signInOpen}
           onClose={() => setSignInOpen(false)}
-          onSuccess={handleSignInSuccess}
           onSwitchToSignUp={handleOpenSignUp}
         />
         <OnboardingModal
@@ -336,7 +329,6 @@ export default function PayPilotApp() {
           businessKey={businessKey}
           initialPreset={signupPreset}
           onBusinessChange={handleBusinessChange}
-          onOpenApproval={openApproval}
           onClose={() => setOnboardingOpen(false)}
           onComplete={handleOnboardingComplete}
         />
@@ -379,9 +371,10 @@ export default function PayPilotApp() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#3730a3" }}>
-              <Sparkles size={15} color="#6366f1" />
+              <span style={{ width: 8, height: 8, borderRadius: "999px", background: "#6366f1" }} />
               <span>
-                <strong>Newbie Onboarding in Progress:</strong> You're new to PayPilot! Resume the 7-step onboarding flow to finalize your PayPal baseline and safe reminders.
+                <strong>Finish workspace setup:</strong> add your business details, choose data
+                access, and connect PayPal before using live insights.
               </span>
             </div>
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -398,7 +391,7 @@ export default function PayPilotApp() {
                   cursor: "pointer",
                 }}
               >
-                Resume Onboarding Flow →
+                Continue setup →
               </button>
             </div>
           </div>
@@ -433,19 +426,47 @@ export default function PayPilotApp() {
             )}
             {activeView === "clients" && <ClientsView />}
             {activeView === "transactions" && (
-              <TransactionsView business={business} remoteTransactions={remoteTransactions} loading={remoteLoading} error={remoteError} />
+              <TransactionsView
+                business={business}
+                remoteTransactions={remoteTransactions}
+                loading={remoteLoading}
+                error={remoteError}
+              />
             )}
-            {activeView === "ask" && <AgentView business={business} onReviewApproval={() => openApproval(approvalItem)} />}
+            {activeView === "ask" && (
+              <AgentView business={business} remoteProposals={remoteProposals} />
+            )}
             {activeView === "forecast" && (
-              <ForecastView business={business} remoteForecast={remoteForecast} loading={remoteLoading} error={remoteError} onWhatIf={() => setWhatIfOpen(true)} />
+              <ForecastView
+                business={business}
+                remoteForecast={remoteForecast}
+                loading={remoteLoading}
+                error={remoteError}
+                onWhatIf={() => setWhatIfOpen(true)}
+              />
             )}
             {activeView === "risk" && (
-              <RiskView business={business} findings={remoteFindings} loading={remoteLoading} error={remoteError} onPolicies={() => setActiveView("policies")} />
+              <RiskView
+                business={business}
+                findings={remoteFindings}
+                loading={remoteLoading}
+                error={remoteError}
+                onPolicies={() => setActiveView("policies")}
+              />
             )}
-            {activeView === "policies" && <PoliciesView policy={remotePolicy} loading={remoteLoading} error={remoteError} onPolicySaved={setRemotePolicy} />}
+            {activeView === "policies" && (
+              <PoliciesView
+                policy={remotePolicy}
+                loading={remoteLoading}
+                error={remoteError}
+                onPolicySaved={setRemotePolicy}
+              />
+            )}
             {activeView === "workflows" && <WorkflowsView />}
             {activeView === "sent" && <SentView />}
-            {activeView === "audit" && <AuditView events={remoteAuditEvents} loading={remoteLoading} error={remoteError} />}
+            {activeView === "audit" && (
+              <AuditView events={remoteAuditEvents} loading={remoteLoading} error={remoteError} />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -475,16 +496,12 @@ export default function PayPilotApp() {
         userName={currentUser?.name || business.name}
         businessName={currentUser?.businessName || business.name}
         businessKey={businessKey}
-        onOpenFirstProposal={() => {
-          setActiveView("inbox");
-          openApproval(approvalItem);
-        }}
+        onOpenFirstProposal={() => setActiveView("inbox")}
         onExploreDashboard={() => setWelcomeOpen(false)}
       />
       <SignInModal
         isOpen={signInOpen}
         onClose={() => setSignInOpen(false)}
-        onSuccess={handleSignInSuccess}
         onSwitchToSignUp={handleOpenSignUp}
       />
       <OnboardingModal
@@ -492,7 +509,6 @@ export default function PayPilotApp() {
         businessKey={businessKey}
         initialPreset={signupPreset}
         onBusinessChange={handleBusinessChange}
-        onOpenApproval={openApproval}
         onClose={() => setOnboardingOpen(false)}
         onComplete={handleOnboardingComplete}
       />

@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/frontend/components/ui/button";
 import type { BusinessKey } from "@/frontend/features/paypilot/types";
-import { businessProfiles } from "@/frontend/features/paypilot/data";
 
 interface WelcomeModalProps {
   isOpen: boolean;
@@ -37,8 +36,6 @@ export function WelcomeModal({
   onExploreDashboard,
 }: WelcomeModalProps) {
   if (!isOpen) return null;
-
-  const profile = businessProfiles[businessKey];
 
   return (
     <div className="what-if-overlay z-50 fixed inset-0 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
@@ -65,7 +62,7 @@ export function WelcomeModal({
 
           <div className="flex items-center gap-2 mb-3">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 backdrop-blur-xs border border-white/20 text-xs font-bold text-indigo-200">
-              <Sparkles size={13} className="text-amber-300 animate-spin" /> Setup Complete · Live Cockpit
+              <Sparkles size={13} className="text-amber-300" /> Workspace created
             </span>
           </div>
 
@@ -74,15 +71,15 @@ export function WelcomeModal({
           </h2>
 
           <p className="text-xs sm:text-sm text-indigo-100 mt-2 leading-relaxed">
-            Your workspace for <strong>{businessName || profile.name}</strong> is now configured
-            with <strong>{profile.type}</strong> guardrails.
+            Your workspace for <strong>{businessName || "your business"}</strong> is ready. Review
+            the connection and safety settings before using live data.
           </p>
         </div>
 
         {/* Milestones checklist */}
         <div className="p-6 space-y-4">
           <div className="text-xs font-mono font-bold uppercase tracking-wider text-gray-500">
-            Active Protections & Synchronizations
+            Setup status
           </div>
 
           <div className="space-y-2.5">
@@ -90,10 +87,10 @@ export function WelcomeModal({
               <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
               <div className="text-xs">
                 <strong className="text-emerald-950 font-semibold block">
-                  PayPal Scoped Connection Active
+                  PayPal connection requested
                 </strong>
                 <span className="text-emerald-800">
-                  Read-only access verified. No custody of funds or withdrawal rights.
+                  Confirm the connection status in the dashboard before relying on imported data.
                 </span>
               </div>
             </div>
@@ -102,10 +99,11 @@ export function WelcomeModal({
               <CheckCircle2 size={18} className="text-indigo-600 shrink-0 mt-0.5" />
               <div className="text-xs">
                 <strong className="text-indigo-950 font-semibold block">
-                  90-Day Transaction Baseline Synced
+                  History sync pending
                 </strong>
                 <span className="text-indigo-800">
-                  Client reliability score calibrated: {profile.metric.value} expected this month.
+                  Forecasts and client insights will appear after PayPilot imports available PayPal
+                  history.
                 </span>
               </div>
             </div>
@@ -114,10 +112,10 @@ export function WelcomeModal({
               <ShieldCheck size={18} className="text-purple-600 shrink-0 mt-0.5" />
               <div className="text-xs">
                 <strong className="text-purple-950 font-semibold block">
-                  Strict Permission Guardrails Loaded
+                  Approval safeguards enabled
                 </strong>
                 <span className="text-purple-800">
-                  Quiet hours (22:00–08:00) enforced. Outbound messages require human sign-off.
+                  Outbound actions remain behind your explicit approval.
                 </span>
               </div>
             </div>
@@ -125,11 +123,9 @@ export function WelcomeModal({
             <div className="flex items-start gap-3 p-3 bg-amber-50/80 border border-amber-200 rounded-xl">
               <Zap size={18} className="text-amber-600 shrink-0 mt-0.5" />
               <div className="text-xs">
-                <strong className="text-amber-950 font-semibold block">
-                  1 Automated Recovery Draft Ready
-                </strong>
+                <strong className="text-amber-950 font-semibold block">No live proposal yet</strong>
                 <span className="text-amber-800">
-                  Priya Sharma ($2,200 overdue) has a tone-matched reminder awaiting your review.
+                  PayPilot will show the first proposal after it finds a real account signal.
                 </span>
               </div>
             </div>
@@ -140,11 +136,11 @@ export function WelcomeModal({
             <Button
               onClick={() => {
                 onClose();
-                if (onOpenFirstProposal) onOpenFirstProposal();
+                if (onExploreDashboard) onExploreDashboard();
               }}
               className="button-primary flex-1 h-11 text-xs font-bold justify-center"
             >
-              <Inbox size={15} /> Review First Action in Inbox →
+              <Inbox size={15} /> Open your dashboard →
             </Button>
             <Button
               variant="secondary"

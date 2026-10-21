@@ -81,7 +81,12 @@ export type ApiProposal = {
   amountCents?: number;
   rationale?: string;
   resourceId?: string;
-  policyDecision: { allowed: boolean; requiresApproval: boolean; reason: string; matchedRuleIds?: readonly string[] };
+  policyDecision: {
+    allowed: boolean;
+    requiresApproval: boolean;
+    reason: string;
+    matchedRuleIds?: readonly string[];
+  };
 };
 
 export type ParsedPolicy = {
@@ -171,7 +176,12 @@ export function simulateReminder(
   });
 }
 
-export function simulateWhatIf(input: { amountCents: number; discountPct: number; waitProbability: number; waitDays: number }): Promise<ApiWhatIfSimulation> {
+export function simulateWhatIf(input: {
+  amountCents: number;
+  discountPct: number;
+  waitProbability: number;
+  waitDays: number;
+}): Promise<ApiWhatIfSimulation> {
   return request<ApiWhatIfSimulation>("/api/simulate", {
     method: "POST",
     body: JSON.stringify(input),
@@ -251,7 +261,9 @@ export function parseWorkflow(text: string): Promise<ParsedWorkflow> {
   });
 }
 
-export function runWorkflow(workflow: ParsedWorkflow): Promise<{ workflow: ParsedWorkflow; proposal: ApiProposal }> {
+export function runWorkflow(
+  workflow: ParsedWorkflow
+): Promise<{ workflow: ParsedWorkflow; proposal: ApiProposal }> {
   return request<{ workflow: ParsedWorkflow; proposal: ApiProposal }>("/api/workflows/run", {
     method: "POST",
     body: JSON.stringify({ workflow }),
@@ -333,6 +345,11 @@ export type OnboardingState = {
     timezone?: string;
     replyToEmail?: string;
   };
+  notifications?: {
+    email?: boolean;
+    inApp?: boolean;
+    dailyDigest?: boolean;
+  };
 };
 
 export type ConnectionState = {
@@ -346,8 +363,22 @@ export type ConnectionState = {
 export type LifecycleState = {
   paused: boolean;
   connection: ConnectionState;
-  exportJobs: readonly { id: string; status: string; createdAt: string; files: readonly string[] }[];
+  exportJobs: readonly {
+    id: string;
+    status: string;
+    createdAt: string;
+    files: readonly string[];
+  }[];
   deletionRequest?: { id: string; status: string; gracePeriodEndsAt: string };
+};
+
+export type ApiNotification = {
+  id: string;
+  title: string;
+  body: string;
+  severity: "info" | "warning" | "critical";
+  readAt?: string;
+  createdAt: string;
 };
 
 export function getOnboarding(): Promise<OnboardingState> {
@@ -387,6 +418,17 @@ export function getLifecycle(): Promise<LifecycleState> {
   return request<LifecycleState>("/api/lifecycle");
 }
 
+export function getNotifications(): Promise<{ data: ApiNotification[] }> {
+  return request<{ data: ApiNotification[] }>("/api/notifications");
+}
+
+export function markNotificationRead(id: string): Promise<ApiNotification> {
+  return request<ApiNotification>(`/api/notifications/${encodeURIComponent(id)}/read`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
 export function pauseAgent(): Promise<LifecycleState> {
   return request<LifecycleState>("/api/lifecycle/pause", {
     method: "POST",
@@ -421,4 +463,3 @@ export function scheduleDeletion(): Promise<LifecycleState> {
     body: "{}",
   });
 }
-

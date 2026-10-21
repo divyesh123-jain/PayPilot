@@ -93,6 +93,24 @@ export function ForecastPanel({
   data: BusinessProfile["forecast"];
   accent: string;
 }) {
+  if (data.days.length < 2) {
+    return (
+      <section className="panel forecast-panel">
+        <div className="panel-header">
+          <div>
+            <span className="eyebrow">CASH OUTLOOK</span>
+            <h2>Forecast</h2>
+          </div>
+        </div>
+        <div className="empty-state" style={{ margin: "20px 0" }}>
+          <strong>Forecast needs connected history</strong>
+          <p>
+            Connect PayPal and import enough payment activity for PayPilot to calculate a forecast.
+          </p>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="panel forecast-panel">
       <div className="panel-header">

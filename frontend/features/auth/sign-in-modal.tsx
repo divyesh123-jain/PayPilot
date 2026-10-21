@@ -2,129 +2,41 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  ArrowRight,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  Lock,
-  Mail,
-  RefreshCw,
-  Sparkles,
-  User,
-  X,
-  Zap,
-} from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, Mail, RefreshCw, Sparkles, User, X } from "lucide-react";
 import { Button } from "@/frontend/components/ui/button";
 import type { BusinessKey } from "@/frontend/features/paypilot/types";
-import { businessProfiles } from "@/frontend/features/paypilot/data";
 
 interface SignInModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (user: {
-    name: string;
-    email: string;
-    businessName: string;
-    businessKey: BusinessKey;
-  }) => void;
   onSwitchToSignUp: (preset?: BusinessKey) => void;
 }
 
-const demoAccounts: {
-  key: BusinessKey;
-  name: string;
-  email: string;
-  businessName: string;
-  role: string;
-  avatarColor: string;
-  initials: string;
-}[] = [
-  {
-    key: "freelancer",
-    name: "Alex Morgan",
-    email: "alex@morgancreative.agency",
-    businessName: "Morgan Creative Studio",
-    role: "Freelancer / Studio",
-    avatarColor: "#a88bff",
-    initials: "AM",
-  },
-  {
-    key: "saas",
-    name: "Liam Chen",
-    email: "liam@pulsemetrics.io",
-    businessName: "PulseMetrics SaaS",
-    role: "SaaS Founder",
-    avatarColor: "#4f98ca",
-    initials: "LC",
-  },
-  {
-    key: "ecommerce",
-    name: "Nora Blake",
-    email: "nora@drifttide.com",
-    businessName: "Drift & Tide Co.",
-    role: "E-Commerce Merchant",
-    avatarColor: "#e28743",
-    initials: "NB",
-  },
-  {
-    key: "agency",
-    name: "Maya Patel",
-    email: "maya@northstar.agency",
-    businessName: "NorthStar Studio",
-    role: "Agency Director",
-    avatarColor: "#21b6a8",
-    initials: "MP",
-  },
-];
-
-export function SignInModal({
-  isOpen,
-  onClose,
-  onSuccess,
-  onSwitchToSignUp,
-}: SignInModalProps) {
+export function SignInModal({ isOpen, onClose, onSwitchToSignUp }: SignInModalProps) {
   const [activeTab, setActiveTab] = useState<"password" | "magic">("password");
-  const [email, setEmail] = useState("alex@morgancreative.agency");
-  const [password, setPassword] = useState("••••••••••••");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [magicSent, setMagicSent] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<BusinessKey>("freelancer");
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    if (!email.trim() || !password) {
+      setError("Enter your work email and password to continue.");
+      return;
+    }
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      const profile = businessProfiles[selectedKey];
-      onSuccess({
-        name: profile.name,
-        email: email || "alex@morgancreative.agency",
-        businessName: profile.type + " Workspace",
-        businessKey: selectedKey,
-      });
-      onClose();
-    }, 600);
-  };
-
-  const handleSelectDemo = (acc: (typeof demoAccounts)[0]) => {
-    setEmail(acc.email);
-    setSelectedKey(acc.key);
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      onSuccess({
-        name: acc.name,
-        email: acc.email,
-        businessName: acc.businessName,
-        businessKey: acc.key,
-      });
-      onClose();
-    }, 450);
+      setError(
+        "Sign-in is not connected in this environment yet. Start a new workspace to continue with real setup."
+      );
+    }, 300);
   };
 
   return (
@@ -162,40 +74,6 @@ export function SignInModal({
           </button>
         </div>
 
-        {/* 1-Click Quick Demo Accounts (Ideal for evaluation!) */}
-        <div className="p-6 pb-3 bg-[#fafbfe] border-b border-gray-100">
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1">
-              <Zap size={12} className="text-amber-500" /> 1-Click Instant Demo Sign-In
-            </span>
-            <span className="text-[10px] text-gray-400 font-medium">Select a persona</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            {demoAccounts.map((acc) => (
-              <button
-                key={acc.key}
-                type="button"
-                onClick={() => handleSelectDemo(acc)}
-                className="flex items-center gap-2 p-2 bg-white rounded-xl border border-gray-200 hover:border-indigo-400 hover:shadow-xs transition text-left group"
-              >
-                <div
-                  className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-white text-[11px] shrink-0"
-                  style={{ background: acc.avatarColor }}
-                >
-                  {acc.initials}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-gray-800 truncate group-hover:text-indigo-600 transition">
-                    {acc.name}
-                  </div>
-                  <div className="text-[10px] text-gray-500 truncate">{acc.role}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Form area */}
         <div className="p-6 pt-5">
           {/* Method tabs */}
@@ -204,7 +82,9 @@ export function SignInModal({
               type="button"
               onClick={() => setActiveTab("password")}
               className={`flex-1 py-1.5 rounded-md text-center transition ${
-                activeTab === "password" ? "bg-white text-gray-900 shadow-xs" : "hover:text-gray-900"
+                activeTab === "password"
+                  ? "bg-white text-gray-900 shadow-xs"
+                  : "hover:text-gray-900"
               }`}
             >
               Email & Password
@@ -240,13 +120,6 @@ export function SignInModal({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-gray-700">Password</label>
-                  <button
-                    type="button"
-                    onClick={() => alert("For this demo, any password works or select 1-click demo sign-in!")}
-                    className="text-[11px] text-indigo-600 hover:underline"
-                  >
-                    Forgot password?
-                  </button>
                 </div>
                 <div className="relative">
                   <input
@@ -292,6 +165,11 @@ export function SignInModal({
                   <>Sign In to Cockpit →</>
                 )}
               </Button>
+              {error && (
+                <p role="alert" className="text-xs text-red-700">
+                  {error}
+                </p>
+              )}
             </form>
           ) : (
             <div className="space-y-4">
@@ -311,38 +189,25 @@ export function SignInModal({
                 </div>
               </div>
 
-              {magicSent ? (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-2">
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <CheckCircle2 size={15} /> Magic Link Sent!
-                  </div>
-                  <p>
-                    Check your inbox at <strong>{email}</strong>. For this demo, you can click below to simulate clicking the magic link:
-                  </p>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      const profile = businessProfiles[selectedKey];
-                      onSuccess({
-                        name: profile.name,
-                        email,
-                        businessName: profile.type + " Workspace",
-                        businessKey: selectedKey,
-                      });
-                      onClose();
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white w-full text-xs mt-1"
-                  >
-                    Simulate Clicking Magic Link →
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  onClick={() => setMagicSent(true)}
-                  className="w-full button-primary h-10 text-xs font-bold justify-center"
-                >
-                  Send One-Click Magic Link
-                </Button>
+              <Button
+                onClick={() => {
+                  setError(null);
+                  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+                    setError("Enter a valid work email address first.");
+                    return;
+                  }
+                  setError(
+                    "Magic-link delivery is not connected in this environment yet. Start a new workspace to continue with real setup."
+                  );
+                }}
+                className="w-full button-primary h-10 text-xs font-bold justify-center"
+              >
+                Request sign-in link
+              </Button>
+              {error && (
+                <p role="alert" className="text-xs text-red-700">
+                  {error}
+                </p>
               )}
             </div>
           )}
@@ -354,7 +219,7 @@ export function SignInModal({
               type="button"
               onClick={() => {
                 onClose();
-                onSwitchToSignUp(selectedKey);
+                onSwitchToSignUp();
               }}
               className="text-indigo-600 font-bold hover:underline ml-1"
             >
