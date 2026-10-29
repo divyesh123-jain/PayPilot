@@ -346,8 +346,6 @@ export default function PayPilotApp() {
         onBusinessChange={handleBusinessChange}
         onNavigate={setActiveView}
         onOpenSettings={() => setSettingsOpen(true)}
-        onOpenOnboarding={() => setOnboardingOpen(true)}
-        onGoToLanding={handleGoToLanding}
         onSignOut={handleSignOut}
       />
       <div className="main-shell">

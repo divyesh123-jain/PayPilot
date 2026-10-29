@@ -16,7 +16,6 @@ import {
   MailCheck,
   Workflow,
   Zap,
-  Home,
   LogOut,
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -46,8 +45,6 @@ export function Sidebar({
   onBusinessChange,
   onNavigate,
   onOpenSettings,
-  onOpenOnboarding,
-  onGoToLanding,
   onSignOut,
 }: {
   businessKey: BusinessKey;
@@ -57,8 +54,6 @@ export function Sidebar({
   onBusinessChange: (value: BusinessKey) => void;
   onNavigate: (view: ViewKey) => void;
   onOpenSettings?: () => void;
-  onOpenOnboarding?: () => void;
-  onGoToLanding?: () => void;
   onSignOut?: () => void;
 }) {
   return (
@@ -134,29 +129,10 @@ export function Sidebar({
           <span className="agent-stack-label">3 specialists</span>
         </div>
       </div>
-      <button
-        className="nav-item onboarding-link"
-        onClick={onOpenOnboarding}
-        style={{ marginTop: "8px" }}
-      >
-        <Sparkles size={17} color="#6366f1" />
-        <span style={{ fontWeight: 600, color: "#4f46e5" }}>Onboarding Wizard</span>
-      </button>
       <button className="nav-item settings-link" onClick={onOpenSettings}>
         <Settings size={17} />
         <span>Settings & Lifecycle</span>
       </button>
-      {onGoToLanding && (
-        <button
-          className="nav-item"
-          onClick={onGoToLanding}
-          style={{ color: "#4b5563" }}
-          title="Return to Landing Page"
-        >
-          <Home size={17} />
-          <span>Landing Page</span>
-        </button>
-      )}
       <div
         className="profile-row"
         style={{
