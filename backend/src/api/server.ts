@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { WebhookVerificationError } from "../integrations/errors.js";
+import { buildHealthCheck } from "./health.js";
 import type { PayPalTransmissionHeaders } from "./payment-adapter.js";
 import { ApiConflictError, ApiNotFoundError, createDefaultService, PayPilotService, type AgentActor } from "./service.js";
 
@@ -23,12 +24,12 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
   if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
   const url = new URL(request.url ?? "/", "http://localhost");
   try {
-    if (request.method === "GET" && url.pathname === "/health") {
-      return sendJson(response, 200, {
-        ok: true,
+    if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/health")) {
+      const deep = url.searchParams.get("deep") === "1" || url.searchParams.get("deep") === "true";
+      return sendJson(response, 200, await buildHealthCheck({
         paymentMode: service.paymentMode,
-        paypalBaseUrl: process.env.PAYPAL_BASE_URL ?? "https://api-m.sandbox.paypal.com",
-      });
+        checkDatabase: deep,
+      }));
     }
     if (request.method === "GET" && url.pathname === "/api/session") return sendJson(response, 200, service.session());
     if (request.method === "GET" && url.pathname === "/api/onboarding") return sendJson(response, 200, service.onboarding());
