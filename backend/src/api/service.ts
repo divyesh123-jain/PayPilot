@@ -194,10 +194,31 @@ export class PayPilotService {
     return this.onboardingState;
   }
 
-  public connectPayPal(): ConnectionState {
-    this.connectionState = { ...this.connectionState, status: "active", connectedAt: this.connectionState.connectedAt ?? NOW, lastSyncAt: NOW };
-    this.appendAudit("connection.connected", "accepted", "business", this.context.profile.id, { provider: "paypal" });
+  public async connectPayPal(): Promise<ConnectionState> {
+    const verified = await this.adapter.verifyConnection();
+    this.connectionState = {
+      ...this.connectionState,
+      status: "active",
+      scopes: ["transactions.read", "invoices.read", "payments.write"],
+      connectedAt: this.connectionState.connectedAt ?? NOW,
+      lastSyncAt: NOW,
+    };
+    this.appendAudit("connection.connected", "accepted", "business", this.context.profile.id, {
+      provider: "paypal",
+      baseUrl: verified.baseUrl,
+      paymentMode: this.adapter.mode,
+    });
+    this.emit("session.updated", this.session());
     return this.connectionState;
+  }
+
+  public async ingestPayPalWebhook(
+    event: Record<string, unknown>,
+    headers: import("./payment-adapter.js").PayPalTransmissionHeaders,
+    idempotencyKey?: string,
+  ): Promise<WebhookReceipt> {
+    await this.adapter.verifyWebhook(event, headers);
+    return this.ingestWebhook(event, idempotencyKey);
   }
 
   public pauseAgent(): LifecycleState {

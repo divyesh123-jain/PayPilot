@@ -10,8 +10,21 @@ PAYMENT_MODE=mock npm start
 ```
 
 The server listens on `PORT` (default `8080`). `PAYMENT_MODE=mock` uses the seeded
-scenario, `replay` uses a deterministic replay fixture, and `live` calls PayPal using
-the credentials in `.env`.
+scenario, `replay` uses a deterministic replay fixture, and `live` calls PayPal sandbox
+(or the host in `PAYPAL_BASE_URL`) using the credentials in `.env`.
+
+For sandbox mode set:
+
+```bash
+PAYMENT_MODE=live
+PAYPAL_CLIENT_ID=...
+PAYPAL_CLIENT_SECRET=...
+PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com
+PAYPAL_WEBHOOK_ID=...   # required for POST /api/webhooks/paypal
+```
+
+`POST /api/connections/paypal/connect` probes OAuth against the configured host.
+`POST /api/webhooks/paypal` verifies PayPal transmission headers before ingest.
 
 For a clean container build and offline deterministic run:
 
