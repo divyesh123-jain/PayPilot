@@ -33,6 +33,8 @@ docker build -t paypilot-backend .
 docker run --rm -p 8080:8080 -e PAYMENT_MODE=mock paypilot-backend
 ```
 
+Health: `GET /health` or `GET /api/health` (add `?deep=1` to include a database probe).
+
 Important routes include `GET /api/session`, `/api/seed`, `/api/transactions`,
 `/api/clients/:id/profile`, `/api/findings`, `/api/forecast`, `POST /api/simulate`,
 proposal lifecycle routes under `/api/proposals/:id/{approve,reject,execute}`, policy

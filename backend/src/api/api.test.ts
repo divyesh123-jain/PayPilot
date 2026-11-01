@@ -5,6 +5,27 @@ import { createApiServer } from "./server.js";
 import { createPaymentAdapter } from "./payment-adapter.js";
 import { PayPilotService } from "./service.js";
 
+test("health check routes report payment mode and paypal config", async (t) => {
+  const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
+  const server = createApiServer({ service }).listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  for (const path of ["/health", "/api/health"]) {
+    const response = await request(base, path);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.status, "ok");
+    assert.equal(response.body.service, "paypilot-api");
+    assert.equal(response.body.paymentMode, "mock");
+    assert.equal(typeof response.body.paypal.baseUrl, "string");
+    assert.equal(typeof response.body.database.configured, "boolean");
+  }
+});
+
 test("payment adapters expose deterministic mock and replay modes", async () => {
   const mock = createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } });
   const replay = createPaymentAdapter({ env: { PAYMENT_MODE: "replay" } });
