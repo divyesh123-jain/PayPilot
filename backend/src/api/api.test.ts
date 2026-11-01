@@ -47,6 +47,65 @@ test("webhook ingest is idempotent for replay and idempotency key", () => {
   assert.equal(service.auditEvents().length, 1);
 });
 
+test("PayPal sandbox webhook route verifies transmission headers before ingest", async (t) => {
+  const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
+  const server = createApiServer({ service }).listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const rejected = await fetch(`${base}/api/webhooks/paypal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: "paypal-evt-1", type: "PAYMENT.CAPTURE.COMPLETED" }),
+  });
+  assert.equal(rejected.status, 400);
+
+  const accepted = await fetch(`${base}/api/webhooks/paypal`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "paypal-transmission-id": "transmission-1",
+      "paypal-transmission-time": "2026-10-15T12:00:00Z",
+      "paypal-cert-url": "https://api.sandbox.paypal.com/cert",
+      "paypal-auth-algo": "SHA256withRSA",
+      "paypal-transmission-sig": "mock-signature",
+    },
+    body: JSON.stringify({ id: "paypal-evt-1", event_type: "PAYMENT.CAPTURE.COMPLETED", type: "PAYMENT.CAPTURE.COMPLETED" }),
+  });
+  assert.equal(accepted.status, 200);
+  assert.equal((await accepted.json() as { replayed: boolean }).replayed, false);
+
+  const connected = await request(base, "/api/connections/paypal/connect", {});
+  assert.equal(connected.status, 200);
+  assert.equal(connected.body.status, "active");
+});
+
+test("live payment adapter requires PayPal webhook id for signature verification", async () => {
+  const adapter = createPaymentAdapter({
+    env: {
+      PAYMENT_MODE: "live",
+      PAYPAL_CLIENT_ID: "client-id",
+      PAYPAL_CLIENT_SECRET: "client-secret",
+    },
+  });
+  await assert.rejects(
+    adapter.verifyWebhook(
+      { id: "evt" },
+      {
+        transmissionId: "t1",
+        transmissionTime: "2026-10-15T12:00:00Z",
+        certUrl: "https://api.sandbox.paypal.com/cert",
+        authAlgo: "SHA256withRSA",
+        transmissionSig: "sig",
+      },
+    ),
+    /PAYPAL_WEBHOOK_ID/,
+  );
+});
+
 test("core JSON routes return seeded session and proposal lifecycle", async (t) => {
   const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
   const server = createApiServer({ service }).listen(0);

@@ -1,5 +1,11 @@
 import type { TransactionInput } from "../domain/business-context.js";
-import { PayPalClient, type PayPalOrder } from "../integrations/paypal.js";
+import {
+  createPayPalFromEnv,
+  PAYPAL_SANDBOX_BASE_URL,
+  PayPalClient,
+  type PayPalOrder,
+  type WebhookVerificationInput,
+} from "../integrations/paypal.js";
 import { replayTransactions, SEED_TRANSACTIONS } from "./fixtures.js";
 
 export type PaymentMode = "live" | "mock" | "replay";
@@ -17,10 +23,22 @@ export interface PaymentExecution {
   readonly currency: string;
 }
 
+export interface PayPalTransmissionHeaders {
+  readonly transmissionId: string;
+  readonly transmissionTime: string;
+  readonly certUrl: string;
+  readonly authAlgo: string;
+  readonly transmissionSig: string;
+}
+
 export interface PaymentAdapter {
   readonly mode: PaymentMode;
   listTransactions(): Promise<readonly TransactionInput[]>;
   executePayment(input: PaymentExecutionInput): Promise<PaymentExecution>;
+  /** Confirms sandbox/live credentials can mint an OAuth token. No-op in mock/replay. */
+  verifyConnection(): Promise<{ ok: true; baseUrl: string }>;
+  /** Verifies a PayPal webhook signature before the event is ingested. */
+  verifyWebhook(event: Readonly<Record<string, unknown>>, headers: PayPalTransmissionHeaders): Promise<void>;
 }
 
 export interface PaymentAdapterOptions {
@@ -41,12 +59,9 @@ export function createPaymentAdapter(options: PaymentAdapterOptions = {}): Payme
   const mode = paymentModeFromEnv(env);
   if (mode === "mock") return new FixturePaymentAdapter("mock", SEED_TRANSACTIONS, "mock-payment");
   if (mode === "replay") return new FixturePaymentAdapter("replay", replayTransactions(), "replay-payment");
-  return new LivePaymentAdapter(options.paypal ?? new PayPalClient({
-    mode: "live",
-    ...(env.PAYPAL_CLIENT_ID === undefined ? {} : { clientId: env.PAYPAL_CLIENT_ID }),
-    ...(env.PAYPAL_CLIENT_SECRET === undefined ? {} : { clientSecret: env.PAYPAL_CLIENT_SECRET }),
-    ...(env.PAYPAL_BASE_URL === undefined ? {} : { baseUrl: env.PAYPAL_BASE_URL }),
-  }));
+  // PAYMENT_MODE=live always hits the configured PayPal host (sandbox by default).
+  const paypal = options.paypal ?? createPayPalFromEnv({ ...env, PAYPILOT_INTEGRATION_MODE: "live" });
+  return new LivePaymentAdapter(paypal, env.PAYPAL_WEBHOOK_ID, env.PAYPAL_BASE_URL ?? PAYPAL_SANDBOX_BASE_URL);
 }
 
 class FixturePaymentAdapter implements PaymentAdapter {
@@ -71,12 +86,27 @@ class FixturePaymentAdapter implements PaymentAdapter {
       currency: input.currency,
     };
   }
+
+  public async verifyConnection(): Promise<{ ok: true; baseUrl: string }> {
+    return { ok: true, baseUrl: "mock://paypal" };
+  }
+
+  public async verifyWebhook(event: Readonly<Record<string, unknown>>, headers: PayPalTransmissionHeaders): Promise<void> {
+    const client = new PayPalClient({ mode: "mock" });
+    await client.verifyWebhookSignature({
+      ...toVerificationInput(event, headers, "mock-webhook"),
+    });
+  }
 }
 
 class LivePaymentAdapter implements PaymentAdapter {
   public readonly mode = "live" as const;
 
-  public constructor(private readonly client: PayPalClient) {}
+  public constructor(
+    private readonly client: PayPalClient,
+    private readonly webhookId: string | undefined,
+    private readonly baseUrl: string,
+  ) {}
 
   public async listTransactions(): Promise<readonly TransactionInput[]> {
     const page = await this.client.listTransactions({
@@ -106,13 +136,22 @@ class LivePaymentAdapter implements PaymentAdapter {
     if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
       throw new Error("amountCents must be a positive integer");
     }
-    const order: PayPalOrder = await this.client.createOrder({
+    const created: PayPalOrder = await this.client.createOrder({
       intent: "CAPTURE",
       purchase_units: [{
         ...(input.reference === undefined ? {} : { reference_id: input.reference }),
         amount: { currency_code: input.currency, value: (input.amountCents / 100).toFixed(2) },
       }],
     });
+    // Capture only after buyer approval; otherwise leave the sandbox order pending.
+    let order = created;
+    if (created.status === "APPROVED") {
+      try {
+        order = await this.client.captureOrder(created.id);
+      } catch {
+        order = created;
+      }
+    }
     return {
       externalId: order.id,
       status: order.status === "COMPLETED" ? "completed" : "pending",
@@ -120,4 +159,32 @@ class LivePaymentAdapter implements PaymentAdapter {
       currency: input.currency,
     };
   }
+
+  public async verifyConnection(): Promise<{ ok: true; baseUrl: string }> {
+    await this.client.getAccessToken();
+    return { ok: true, baseUrl: this.baseUrl };
+  }
+
+  public async verifyWebhook(event: Readonly<Record<string, unknown>>, headers: PayPalTransmissionHeaders): Promise<void> {
+    if (!this.webhookId) {
+      throw new Error("PAYPAL_WEBHOOK_ID is required to verify PayPal sandbox webhooks");
+    }
+    await this.client.verifyWebhookSignature(toVerificationInput(event, headers, this.webhookId));
+  }
+}
+
+function toVerificationInput(
+  event: Readonly<Record<string, unknown>>,
+  headers: PayPalTransmissionHeaders,
+  webhookId: string,
+): WebhookVerificationInput {
+  return {
+    transmissionId: headers.transmissionId,
+    transmissionTime: headers.transmissionTime,
+    certUrl: headers.certUrl,
+    authAlgo: headers.authAlgo,
+    transmissionSig: headers.transmissionSig,
+    webhookId,
+    webhookEvent: event,
+  };
 }

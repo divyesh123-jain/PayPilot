@@ -74,6 +74,23 @@ test("missing PayPal credentials fail before fetch is called", async () => {
   assert.equal(fetchCalled, false);
 });
 
+test("PayPal sandbox factory defaults to the sandbox API host", async () => {
+  const requests: string[] = [];
+  const fetchImpl: FetchLike = async (input) => {
+    requests.push(String(input));
+    return jsonResponse({ access_token: "access-token", token_type: "Bearer", expires_in: 3600 });
+  };
+  const { createPayPalFromEnv } = await import("./paypal.js");
+  const paypal = createPayPalFromEnv({
+    PAYPILOT_INTEGRATION_MODE: "live",
+    PAYPAL_CLIENT_ID: "sandbox-client",
+    PAYPAL_CLIENT_SECRET: "sandbox-secret",
+  }, fetchImpl);
+
+  await paypal.getAccessToken();
+  assert.equal(requests[0], "https://api-m.sandbox.paypal.com/v1/oauth2/token");
+});
+
 test("model provider factory falls back to deterministic local output without credentials", async () => {
   let fetchCalled = false;
   const fetchImpl: FetchLike = async () => {

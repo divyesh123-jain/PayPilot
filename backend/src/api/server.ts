@@ -1,4 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { WebhookVerificationError } from "../integrations/errors.js";
+import type { PayPalTransmissionHeaders } from "./payment-adapter.js";
 import { ApiConflictError, ApiNotFoundError, createDefaultService, PayPilotService, type AgentActor } from "./service.js";
 
 const MAX_BODY_BYTES = 1_000_000;
@@ -21,7 +23,13 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
   if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
   const url = new URL(request.url ?? "/", "http://localhost");
   try {
-    if (request.method === "GET" && url.pathname === "/health") return sendJson(response, 200, { ok: true, paymentMode: service.paymentMode });
+    if (request.method === "GET" && url.pathname === "/health") {
+      return sendJson(response, 200, {
+        ok: true,
+        paymentMode: service.paymentMode,
+        paypalBaseUrl: process.env.PAYPAL_BASE_URL ?? "https://api-m.sandbox.paypal.com",
+      });
+    }
     if (request.method === "GET" && url.pathname === "/api/session") return sendJson(response, 200, service.session());
     if (request.method === "GET" && url.pathname === "/api/onboarding") return sendJson(response, 200, service.onboarding());
     if (request.method === "GET" && (url.pathname === "/api/connections" || url.pathname === "/api/connections/paypal")) return sendJson(response, 200, { data: [service.connection()] });
@@ -75,6 +83,12 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
     if (request.method === "GET" && (url.pathname === "/api/stream" || url.pathname === "/api/events")) return stream(response, service);
 
     if (request.method !== "POST") return sendJson(response, 404, { error: "Route not found" });
+    if (url.pathname === "/api/webhooks/paypal" || url.pathname === "/api/webhook/paypal") {
+      const raw = await readRawBody(request);
+      const event = parseJsonObject(raw);
+      const headers = paypalTransmissionHeaders(request);
+      return sendJson(response, 200, await service.ingestPayPalWebhook(event, headers, header(request, "idempotency-key") ?? String(event.id ?? "")));
+    }
     const body = await readJsonBody(request);
     if (url.pathname === "/api/agent/chat") {
       const prompt = requiredString(body.prompt ?? body.text ?? body.message, "prompt");
@@ -117,7 +131,9 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
       if (status !== "in_progress" && status !== "complete" && status !== "skipped") throw new Error("status must be in_progress, complete, or skipped");
       return sendJson(response, 200, service.advanceOnboarding(stepId, status, body.metadata as Record<string, unknown> | undefined));
     }
-    if (url.pathname === "/api/connections/paypal/connect" || url.pathname === "/api/connections/connect") return sendJson(response, 200, service.connectPayPal());
+    if (url.pathname === "/api/connections/paypal/connect" || url.pathname === "/api/connections/connect") {
+      return sendJson(response, 200, await service.connectPayPal());
+    }
     if (url.pathname === "/api/connections/paypal/disconnect" || url.pathname === "/api/lifecycle/disconnect") return sendJson(response, 200, service.disconnectPayPal());
     if (url.pathname === "/api/lifecycle/pause") return sendJson(response, 200, service.pauseAgent());
     if (url.pathname === "/api/lifecycle/resume") return sendJson(response, 200, service.resumeAgent());
@@ -152,7 +168,15 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
     if (workflowRunMatch?.[1]) return sendJson(response, 200, service.runWorkflow(decodeURIComponent(workflowRunMatch[1])));
     return sendJson(response, 404, { error: "Route not found" });
   } catch (error) {
-    const status = error instanceof ApiNotFoundError ? 404 : error instanceof ApiConflictError ? 409 : error instanceof Error && error.name === "PolicyViolationError" ? 403 : 400;
+    const status = error instanceof ApiNotFoundError
+      ? 404
+      : error instanceof ApiConflictError
+        ? 409
+        : error instanceof WebhookVerificationError
+          ? 400
+          : error instanceof Error && error.name === "PolicyViolationError"
+            ? 403
+            : 400;
     sendJson(response, status, { error: error instanceof Error ? error.message : "Request failed", ...(error instanceof Error && "decision" in error ? { decision: (error as { decision: unknown }).decision } : {}) });
   }
 }
@@ -170,7 +194,7 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
   response.end(payload);
 }
 
-async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+async function readRawBody(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -179,10 +203,33 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
     if (size > MAX_BODY_BYTES) throw new Error("Request body is too large");
     chunks.push(buffer);
   }
-  if (chunks.length === 0) return {};
-  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function parseJsonObject(raw: string): Record<string, unknown> {
+  if (!raw) return {};
+  const parsed: unknown = JSON.parse(raw);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("JSON body must be an object");
   return parsed as Record<string, unknown>;
+}
+
+async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+  return parseJsonObject(await readRawBody(request));
+}
+
+function paypalTransmissionHeaders(request: IncomingMessage): PayPalTransmissionHeaders {
+  const required = (name: string): string => {
+    const value = header(request, name);
+    if (!value) throw new Error(`Missing PayPal webhook header: ${name}`);
+    return value;
+  };
+  return {
+    transmissionId: required("paypal-transmission-id"),
+    transmissionTime: required("paypal-transmission-time"),
+    certUrl: required("paypal-cert-url"),
+    authAlgo: required("paypal-auth-algo"),
+    transmissionSig: required("paypal-transmission-sig"),
+  };
 }
 
 function requiredString(value: unknown, name: string): string {
