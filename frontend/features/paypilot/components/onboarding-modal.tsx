@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/frontend/components/ui/button";
-import { advanceOnboarding, connectPayPal } from "@/frontend/lib/api";
+import { advanceOnboarding, getConnection, startPayPalConnect } from "@/frontend/lib/api";
 import type { BusinessKey } from "@/frontend/features/paypilot/types";
 
 const STORAGE_KEY = "paypilot_onboarding_v3";
@@ -235,30 +235,38 @@ export function OnboardingModal({
     }
   };
 
-  const handleConnectPayPal = async () => {
-    setConnecting(true);
-    setAuthError(null);
-    try {
-      const connection = await connectPayPal();
-      if (connection.status !== "active") {
-        setConnected(false);
-        setAuthError("PayPal did not confirm an active connection. No credentials were stored.");
-      } else {
+  useEffect(() => {
+    if (!isOpen || typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("paypal") !== "connected") return;
+    let active = true;
+    getConnection()
+      .then(async (connection) => {
+        if (!active) return;
+        if (connection.status !== "active") return;
         setConnected(true);
         setAuthError(null);
-        setValidationMessage(null);
         try {
           await advanceOnboarding("connect_paypal", "complete");
         } catch {
-          // The connection is still usable if onboarding progress cannot be saved.
+          // progress save is best-effort
         }
         setStepIndex((index) => Math.min(index + 1, steps.length - 1));
-      }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [isOpen, steps.length]);
+
+  const handleConnectPayPal = () => {
+    setConnecting(true);
+    setAuthError(null);
+    try {
+      startPayPalConnect("/?paypal=connected");
     } catch {
-      setConnected(false);
-      setAuthError("We couldn't connect PayPal. Check the authorization window and try again.");
-    } finally {
       setConnecting(false);
+      setConnected(false);
+      setAuthError("We couldn't start PayPal OAuth. Check that the API is reachable and try again.");
     }
   };
 

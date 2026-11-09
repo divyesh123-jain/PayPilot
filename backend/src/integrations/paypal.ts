@@ -23,13 +23,40 @@ export interface PayPalOAuthToken {
   readonly tokenType: string;
   readonly expiresIn: number;
   readonly scope?: string;
+  readonly refreshToken?: string;
+  readonly nonce?: string;
 }
+
+export interface PayPalUserInfo {
+  readonly userId: string;
+  readonly payerId?: string;
+  readonly email?: string;
+  readonly name?: string;
+  readonly verifiedAccount?: boolean;
+}
+
+export const PAYPAL_LOGIN_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "https://uri.paypal.com/services/paypalattributes",
+].join(" ");
 
 interface PayPalOAuthResponse {
   access_token?: string;
   token_type?: string;
   expires_in?: number;
   scope?: string;
+  refresh_token?: string;
+  nonce?: string;
+}
+
+interface PayPalUserInfoResponse {
+  user_id?: string;
+  payer_id?: string;
+  email?: string;
+  name?: string;
+  verified_account?: boolean | string;
 }
 
 export interface PayPalOAuthAdapter {
@@ -183,34 +210,84 @@ export class PayPalClient implements PayPalIntegrations {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
+  public buildAuthorizeUrl(input: { readonly redirectUri: string; readonly state: string; readonly scopes?: string }): string {
+    const params = new URLSearchParams({
+      flowEntry: "static",
+      client_id: this.clientId ?? "mock-client-id",
+      response_type: "code",
+      scope: input.scopes ?? PAYPAL_LOGIN_SCOPES,
+      redirect_uri: input.redirectUri,
+      state: input.state,
+    });
+    return `${this.connectHost()}/connect?${params.toString()}`;
+  }
+
   public async getAccessToken(): Promise<PayPalOAuthToken> {
     this.assertLiveCredentials();
     if (this.mode === "mock") return mockAccessToken();
     const now = Date.now();
     if (this.tokenCache && this.tokenCache.expiresAt > now + 30_000) return this.tokenCache.token;
-    const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString("base64");
+    const raw = await this.requestToken("grant_type=client_credentials");
+    const token = parseOAuthToken(raw);
+    this.tokenCache = { token, expiresAt: now + raw.expires_in! * 1000 };
+    return token;
+  }
+
+  public async exchangeAuthorizationCode(code: string): Promise<PayPalOAuthToken> {
+    this.assertLiveCredentials();
+    if (this.mode === "mock") {
+      return {
+        ...mockAccessToken(),
+        refreshToken: "mock-paypal-refresh-token",
+        scope: PAYPAL_LOGIN_SCOPES,
+      };
+    }
+    const body = new URLSearchParams({ grant_type: "authorization_code", code }).toString();
+    const raw = await this.requestToken(body);
+    return parseOAuthToken(raw);
+  }
+
+  public async getUserInfo(accessToken: string): Promise<PayPalUserInfo> {
+    if (this.mode === "mock") {
+      return {
+        userId: "mock-paypal-user",
+        payerId: "MOCKPAYERID001",
+        email: "merchant@example.com",
+        name: "PayPilot Sandbox Merchant",
+        verifiedAccount: true,
+      };
+    }
     let response: Response;
     try {
-      response = await this.fetchImpl(joinUrl(this.baseUrl, "/v1/oauth2/token"), {
-        method: "POST",
-        headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
-        body: "grant_type=client_credentials",
+      response = await this.fetchImpl(joinUrl(this.baseUrl, "/v1/identity/oauth2/userinfo?schema=paypalv1.1"), {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
       });
     } catch (error) {
       return requestFailure("paypal", error);
     }
-    const raw = await readJson<PayPalOAuthResponse>(response, "paypal");
-    if (!raw.access_token || !raw.token_type || typeof raw.expires_in !== "number") {
-      throw new IntegrationResponseError("paypal", "PayPal OAuth response is missing token fields", response.status, raw);
+    const raw = await readJson<PayPalUserInfoResponse>(response, "paypal");
+    const userId = raw.user_id ?? raw.payer_id;
+    if (!userId) {
+      throw new IntegrationResponseError("paypal", "PayPal userinfo response is missing user_id", response.status, raw);
     }
-    const token: PayPalOAuthToken = {
-      accessToken: raw.access_token,
-      tokenType: raw.token_type,
-      expiresIn: raw.expires_in,
-      ...(raw.scope === undefined ? {} : { scope: raw.scope }),
+    return {
+      userId,
+      ...(raw.payer_id === undefined ? {} : { payerId: raw.payer_id }),
+      ...(raw.email === undefined ? {} : { email: raw.email }),
+      ...(raw.name === undefined ? {} : { name: raw.name }),
+      ...(raw.verified_account === undefined
+        ? {}
+        : { verifiedAccount: raw.verified_account === true || raw.verified_account === "true" }),
     };
-    this.tokenCache = { token, expiresAt: now + raw.expires_in * 1000 };
-    return token;
+  }
+
+  public get modeName(): PayPalMode {
+    return this.mode;
+  }
+
+  public get hasCredentials(): boolean {
+    return Boolean(this.clientId && this.clientSecret);
   }
 
   public async createOrder(request: CreateOrderRequest): Promise<PayPalOrder> {
@@ -284,6 +361,29 @@ export class PayPalClient implements PayPalIntegrations {
     return result;
   }
 
+  private connectHost(): string {
+    return this.baseUrl.includes("sandbox") ? "https://www.sandbox.paypal.com" : "https://www.paypal.com";
+  }
+
+  private async requestToken(body: string): Promise<PayPalOAuthResponse> {
+    const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString("base64");
+    let response: Response;
+    try {
+      response = await this.fetchImpl(joinUrl(this.baseUrl, "/v1/oauth2/token"), {
+        method: "POST",
+        headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      });
+    } catch (error) {
+      return requestFailure("paypal", error);
+    }
+    const raw = await readJson<PayPalOAuthResponse>(response, "paypal");
+    if (!raw.access_token || !raw.token_type || typeof raw.expires_in !== "number") {
+      throw new IntegrationResponseError("paypal", "PayPal OAuth response is missing token fields", response.status, raw);
+    }
+    return raw;
+  }
+
   private assertLiveCredentials(): void {
     if (this.mode === "mock") return;
     if (!this.clientId || !this.clientSecret) {
@@ -312,6 +412,17 @@ export class PayPalClient implements PayPalIntegrations {
 
 function mockAccessToken(): PayPalOAuthToken {
   return { accessToken: "mock-paypal-access-token", tokenType: "Bearer", expiresIn: 3600, scope: "mock" };
+}
+
+function parseOAuthToken(raw: PayPalOAuthResponse): PayPalOAuthToken {
+  return {
+    accessToken: raw.access_token!,
+    tokenType: raw.token_type!,
+    expiresIn: raw.expires_in!,
+    ...(raw.scope === undefined ? {} : { scope: raw.scope }),
+    ...(raw.refresh_token === undefined ? {} : { refreshToken: raw.refresh_token }),
+    ...(raw.nonce === undefined ? {} : { nonce: raw.nonce }),
+  };
 }
 
 function mockOrder(request: CreateOrderRequest): PayPalOrder {

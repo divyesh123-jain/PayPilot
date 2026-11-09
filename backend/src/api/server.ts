@@ -1,8 +1,20 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { WebhookVerificationError } from "../integrations/errors.js";
+import { PAYPAL_LOGIN_SCOPES } from "../integrations/paypal.js";
 import { buildHealthCheck } from "./health.js";
+import { consumeOAuthState } from "./oauth-state.js";
 import type { PayPalTransmissionHeaders } from "./payment-adapter.js";
+import { authUserFromIdentity, frontendOrigin, resolvePayPalIdentity, startPayPalOAuth } from "./paypal-oauth.js";
 import { ApiConflictError, ApiNotFoundError, createDefaultService, PayPilotService, type AgentActor } from "./service.js";
+import {
+  clearSessionCookie,
+  createUserSessionWithId,
+  currentUserFromRequest,
+  destroySession,
+  readSessionCookie,
+  setSessionCookie,
+  verifySignedSessionId,
+} from "./user-session.js";
 
 const MAX_BODY_BYTES = 1_000_000;
 
@@ -18,11 +30,10 @@ export function createApiServer(options: ApiServerOptions = {}): Server {
 }
 
 export async function handleRequest(request: IncomingMessage, response: ServerResponse, service: PayPilotService): Promise<void> {
-  response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key");
-  response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  applyCors(request, response);
   if (request.method === "OPTIONS") { response.writeHead(204); response.end(); return; }
   const url = new URL(request.url ?? "/", "http://localhost");
+  const secure = isSecureRequest(request);
   try {
     if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/health")) {
       const deep = url.searchParams.get("deep") === "1" || url.searchParams.get("deep") === "true";
@@ -30,6 +41,57 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
         paymentMode: service.paymentMode,
         checkDatabase: deep,
       }));
+    }
+    if (request.method === "GET" && url.pathname === "/api/auth/paypal/start") {
+      const returnTo = url.searchParams.get("returnTo") ?? undefined;
+      return redirect(response, startPayPalOAuth("login", returnTo ?? undefined));
+    }
+    if (request.method === "GET" && url.pathname === "/api/auth/paypal/callback") {
+      const code = requiredQuery(url, "code");
+      const state = requiredQuery(url, "state");
+      consumeOAuthState(state, "login");
+      const identity = await resolvePayPalIdentity(code);
+      const authUser = authUserFromIdentity(identity);
+      const { sessionId } = createUserSessionWithId(authUser);
+      setSessionCookie(response, sessionId, secure);
+      const dest = new URL("/auth/callback", frontendOrigin());
+      dest.searchParams.set("ok", "1");
+      return redirect(response, dest.toString());
+    }
+    if (request.method === "GET" && url.pathname === "/api/auth/me") {
+      const user = currentUserFromRequest(request);
+      if (!user) return sendJson(response, 401, { error: "Not authenticated" });
+      return sendJson(response, 200, user);
+    }
+    if (request.method === "POST" && url.pathname === "/api/auth/logout") {
+      const sessionId = verifySignedSessionId(readSessionCookie(request));
+      destroySession(sessionId);
+      clearSessionCookie(response, secure);
+      return sendJson(response, 200, { ok: true });
+    }
+    if (request.method === "GET" && url.pathname === "/api/connections/paypal/oauth/start") {
+      const returnTo = url.searchParams.get("returnTo") ?? undefined;
+      return redirect(response, startPayPalOAuth("connect", returnTo ?? undefined));
+    }
+    if (request.method === "GET" && url.pathname === "/api/connections/paypal/oauth/callback") {
+      const code = requiredQuery(url, "code");
+      const state = requiredQuery(url, "state");
+      const oauthState = consumeOAuthState(state, "connect");
+      const identity = await resolvePayPalIdentity(code);
+      const authUser = authUserFromIdentity(identity);
+      if (!currentUserFromRequest(request)) {
+        const { sessionId } = createUserSessionWithId(authUser);
+        setSessionCookie(response, sessionId, secure);
+      }
+      await service.completePayPalConnect({
+        email: authUser.email,
+        name: authUser.name,
+        paypalPayerId: authUser.paypalPayerId,
+        scopes: PAYPAL_LOGIN_SCOPES.split(" "),
+      });
+      const dest = new URL(oauthState.returnTo ?? "/", frontendOrigin());
+      dest.searchParams.set("paypal", "connected");
+      return redirect(response, dest.toString());
     }
     if (request.method === "GET" && url.pathname === "/api/session") return sendJson(response, 200, service.session());
     if (request.method === "GET" && url.pathname === "/api/onboarding") return sendJson(response, 200, service.onboarding());
@@ -180,6 +242,37 @@ export async function handleRequest(request: IncomingMessage, response: ServerRe
             : 400;
     sendJson(response, status, { error: error instanceof Error ? error.message : "Request failed", ...(error instanceof Error && "decision" in error ? { decision: (error as { decision: unknown }).decision } : {}) });
   }
+}
+
+function applyCors(request: IncomingMessage, response: ServerResponse): void {
+  const allowed = frontendOrigin();
+  const origin = header(request, "origin");
+  if (origin && origin === allowed) {
+    response.setHeader("Access-Control-Allow-Origin", origin);
+    response.setHeader("Access-Control-Allow-Credentials", "true");
+    response.setHeader("Vary", "Origin");
+  } else if (!origin) {
+    response.setHeader("Access-Control-Allow-Origin", allowed);
+  }
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key");
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+}
+
+function redirect(response: ServerResponse, location: string): void {
+  response.writeHead(302, { Location: location });
+  response.end();
+}
+
+function requiredQuery(url: URL, name: string): string {
+  const value = url.searchParams.get(name);
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+function isSecureRequest(request: IncomingMessage): boolean {
+  const forwarded = header(request, "x-forwarded-proto");
+  if (forwarded) return forwarded.split(",")[0]?.trim() === "https";
+  return false;
 }
 
 function stream(response: ServerResponse, service: PayPilotService): void {

@@ -27,11 +27,13 @@ import {
   approveProposal,
   getAuditEvents,
   getApiSession,
+  getAuthMe,
   getFindings,
   getForecast,
   getPolicy,
   getProposals,
   getTransactions,
+  logout,
   rejectProposal,
   resetOnboarding,
   setBusinessSession,
@@ -147,24 +149,69 @@ export default function PayPilotApp() {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window === "undefined") return;
+    let active = true;
+    const isCompleted = localStorage.getItem("paypilot_onboarding_completed") === "true";
+    setOnboardingCompleted(isCompleted);
+
+    const applyLocalSession = () => {
       try {
         const savedSession = localStorage.getItem("paypilot_user_session");
         if (savedSession) {
           const parsed = JSON.parse(savedSession);
           if (parsed && parsed.isAuthenticated) {
             setCurrentUser(parsed);
-            if (parsed.businessKey) {
-              setBusinessKey(parsed.businessKey);
-            }
+            if (parsed.businessKey) setBusinessKey(parsed.businessKey);
+            if (isCompleted) setPageMode("dashboard");
           }
         }
       } catch {
         // storage fallback
       }
-      const isCompleted = localStorage.getItem("paypilot_onboarding_completed") === "true";
-      setOnboardingCompleted(isCompleted);
-    }
+    };
+
+    getAuthMe()
+      .then((user) => {
+        if (!active) return;
+        const session = {
+          name: user.name,
+          email: user.email,
+          businessName: user.name,
+          businessKey: (localStorage.getItem("paypilot_business_key") as BusinessKey) || "freelancer",
+          isAuthenticated: true,
+        };
+        try {
+          const saved = localStorage.getItem("paypilot_user_session");
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed?.businessName) session.businessName = parsed.businessName;
+            if (parsed?.businessKey) session.businessKey = parsed.businessKey;
+          }
+          localStorage.setItem("paypilot_user_session", JSON.stringify(session));
+        } catch {
+          // ignore
+        }
+        setCurrentUser(session);
+        setBusinessKey(session.businessKey);
+        if (isCompleted || new URLSearchParams(window.location.search).get("auth") === "paypal") {
+          setPageMode("dashboard");
+        }
+        if (new URLSearchParams(window.location.search).get("paypal") === "connected") {
+          setSyncLabel("PayPal connected via OAuth");
+          setOnboardingCompleted(true);
+          localStorage.setItem("paypilot_onboarding_completed", "true");
+          setPageMode("dashboard");
+          void loadRemoteData();
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        applyLocalSession();
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleOpenSignUp = (preset?: BusinessKey) => {
@@ -206,6 +253,7 @@ export default function PayPilotApp() {
   };
 
   const handleSignOut = () => {
+    void logout().catch(() => undefined);
     if (typeof window !== "undefined") {
       localStorage.removeItem("paypilot_user_session");
     }
