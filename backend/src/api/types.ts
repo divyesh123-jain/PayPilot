@@ -97,6 +97,18 @@ export interface ConnectionState {
   readonly scopes: readonly string[];
   readonly connectedAt?: string;
   readonly lastSyncAt?: string;
+  readonly merchantEmail?: string;
+  readonly merchantName?: string;
+  readonly paypalPayerId?: string;
+  readonly authMethod?: "oauth" | "credentials_probe";
+}
+
+export interface AuthUserResponse {
+  readonly userId: string;
+  readonly email: string;
+  readonly name: string;
+  readonly paypalPayerId: string;
+  readonly createdAt: string;
 }
 
 export interface NotificationItem {

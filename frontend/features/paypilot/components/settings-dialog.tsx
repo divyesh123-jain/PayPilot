@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Building,
@@ -25,9 +25,13 @@ import { Input } from "@/frontend/components/ui/input";
 import {
   createExport,
   disconnectPayPal,
+  getConnection,
+  getLifecycle,
   pauseAgent,
   resumeAgent,
   scheduleDeletion,
+  startPayPalConnect,
+  type ConnectionState,
 } from "@/frontend/lib/api";
 
 type SettingsTab = "lifecycle" | "profile" | "team" | "connections";
@@ -49,6 +53,27 @@ export function SettingsDialog({
   const [exported, setExported] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [connection, setConnection] = useState<ConnectionState | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    Promise.allSettled([getConnection(), getLifecycle()]).then(([conn, life]) => {
+      if (!active) return;
+      if (conn.status === "fulfilled") {
+        setConnection(conn.value);
+        setDisconnected(conn.value.status !== "active");
+      }
+      if (life.status === "fulfilled") {
+        setPaused(life.value.paused);
+        setConnection(life.value.connection);
+        setDisconnected(life.value.connection.status !== "active");
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
 
   // Profile Form state
   const [businessName, setBusinessName] = useState("");
@@ -89,11 +114,22 @@ export function SettingsDialog({
       return;
     setLoading(true);
     try {
-      await disconnectPayPal();
+      const lifecycle = await disconnectPayPal();
+      setConnection(lifecycle.connection);
       setDisconnected(true);
+      setPaused(true);
     } catch {
       setDisconnected(true);
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReconnect = () => {
+    setLoading(true);
+    try {
+      startPayPalConnect("/?paypal=connected");
+    } catch {
       setLoading(false);
     }
   };
@@ -234,22 +270,31 @@ export function SettingsDialog({
                   <div style={{ fontSize: "11px", color: disconnected ? "#991b1b" : "#64748b" }}>
                     {disconnected
                       ? "Reconnect PayPal to resume imports."
-                      : "Connect PayPal during onboarding to start syncing."}
+                      : connection?.merchantEmail
+                        ? `Connected as ${connection.merchantEmail}`
+                        : "PayPal merchant connection is active."}
                   </div>
                 </div>
               </div>
-              <span
-                style={{
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  background: disconnected ? "#fee2e2" : "#e2e8f0",
-                  color: disconnected ? "#991b1b" : "#475569",
-                  padding: "2px 8px",
-                  borderRadius: "4px",
-                }}
-              >
-                {disconnected ? "DISCONNECTED" : "NOT CONNECTED"}
-              </span>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                {disconnected ? (
+                  <Button variant="secondary" size="sm" onClick={handleReconnect} disabled={loading}>
+                    <RefreshCw size={14} /> Reconnect
+                  </Button>
+                ) : null}
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    background: disconnected ? "#fee2e2" : "#dcfce7",
+                    color: disconnected ? "#991b1b" : "#166534",
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                  }}
+                >
+                  {disconnected ? "DISCONNECTED" : "CONNECTED"}
+                </span>
+              </div>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -497,23 +542,44 @@ export function SettingsDialog({
             >
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Provider:</span>
-                <strong>PayPal merchant connection</strong>
+                <strong>PayPal</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
-                <span>Scopes Active:</span>
-                <strong>Granted scopes appear after authorization</strong>
+                <span>Status:</span>
+                <strong>{connection?.status ?? "unknown"}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
-                <span>Token Vault:</span>
-                <span style={{ color: "#64748b", fontWeight: 600 }}>
-                  Status unavailable until connected
-                </span>
+                <span>Merchant:</span>
+                <strong>{connection?.merchantName ?? "—"}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
+                <span>Email:</span>
+                <strong>{connection?.merchantEmail ?? "—"}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
+                <span>Payer ID:</span>
+                <strong style={{ fontFamily: "monospace", fontSize: "11px" }}>
+                  {connection?.paypalPayerId ?? "—"}
+                </strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
+                <span>Auth method:</span>
+                <strong>{connection?.authMethod ?? "—"}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
+                <span>Scopes:</span>
+                <strong style={{ maxWidth: "60%", textAlign: "right" }}>
+                  {connection?.scopes?.length ? connection.scopes.join(", ") : "None"}
+                </strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
                 <span>Last Sync:</span>
-                <span>Not synced</span>
+                <span>{connection?.lastSyncAt ?? "Not synced"}</span>
               </div>
             </div>
+            <Button variant="secondary" size="sm" onClick={handleReconnect} disabled={loading}>
+              <RefreshCw size={14} /> {disconnected ? "Connect with PayPal" : "Reconnect with PayPal"}
+            </Button>
           </div>
         )}
 

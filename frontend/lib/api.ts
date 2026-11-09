@@ -140,6 +140,7 @@ export const API_BASE_URL = configuredApiUrl
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
   if (!response.ok) {
@@ -153,6 +154,43 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`PayPilot API returned ${response.status}${detail}`);
   }
   return response.json() as Promise<T>;
+}
+
+export type AuthUser = {
+  userId: string;
+  email: string;
+  name: string;
+  paypalPayerId: string;
+  createdAt: string;
+};
+
+export function getAuthMe(): Promise<AuthUser> {
+  return request<AuthUser>("/api/auth/me");
+}
+
+export function logout(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>("/api/auth/logout", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function getPayPalLoginUrl(returnTo?: string): string {
+  const params = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : "";
+  return `${API_BASE_URL}/api/auth/paypal/start${params}`;
+}
+
+export function getPayPalConnectUrl(returnTo?: string): string {
+  const params = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : "";
+  return `${API_BASE_URL}/api/connections/paypal/oauth/start${params}`;
+}
+
+export function startPayPalLogin(returnTo?: string): void {
+  window.location.assign(getPayPalLoginUrl(returnTo));
+}
+
+export function startPayPalConnect(returnTo?: string): void {
+  window.location.assign(getPayPalConnectUrl(returnTo));
 }
 
 export function getApiSession(): Promise<ApiSession> {
@@ -295,7 +333,7 @@ export function executeProposal(id: string): Promise<ApiProposal> {
 export function subscribeEventStream(onEvent: (event: string, data: any) => void): () => void {
   if (typeof window === "undefined" || !("EventSource" in window)) return () => {};
   try {
-    const es = new EventSource(`${API_BASE_URL}/api/stream`);
+    const es = new EventSource(`${API_BASE_URL}/api/stream`, { withCredentials: true });
     const handler = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
@@ -353,11 +391,16 @@ export type OnboardingState = {
 };
 
 export type ConnectionState = {
+  id?: string;
   provider: "paypal";
   status: "active" | "needs_reauth" | "revoked" | "disconnected";
   connectedAt?: string;
   lastSyncAt?: string;
   scopes: readonly string[];
+  merchantEmail?: string;
+  merchantName?: string;
+  paypalPayerId?: string;
+  authMethod?: "oauth" | "credentials_probe";
 };
 
 export type LifecycleState = {
@@ -403,10 +446,17 @@ export function resetOnboarding(asNewbie = true): Promise<OnboardingState> {
   });
 }
 
-export function getConnection(): Promise<ConnectionState> {
-  return request<ConnectionState>("/api/connections");
+export async function getConnection(): Promise<ConnectionState> {
+  const response = await request<{ data: ConnectionState[] } | ConnectionState>("/api/connections");
+  if ("data" in response && Array.isArray(response.data)) {
+    const connection = response.data[0];
+    if (!connection) throw new Error("No PayPal connection was returned");
+    return connection;
+  }
+  return response as ConnectionState;
 }
 
+/** Mock/dev fallback. Prefer startPayPalConnect() for real OAuth. */
 export function connectPayPal(): Promise<ConnectionState> {
   return request<ConnectionState>("/api/connections/connect", {
     method: "POST",

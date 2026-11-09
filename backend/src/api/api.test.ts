@@ -281,6 +281,115 @@ test("transaction filters, clients, workflow persistence, and policy violations 
   assert.equal(audit.body.valid, true);
 });
 
+test("PayPal OAuth login creates a session and /api/auth/me returns the user", async (t) => {
+  process.env.PAYMENT_MODE = "mock";
+  process.env.FRONTEND_ORIGIN = "http://localhost:3000";
+  process.env.SESSION_SECRET = "test-session-secret";
+  const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
+  const server = createApiServer({ service }).listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const start = await fetch(`${base}/api/auth/paypal/start`, { redirect: "manual" });
+  assert.equal(start.status, 302);
+  const callbackLocation = start.headers.get("location");
+  assert.ok(callbackLocation);
+  assert.match(callbackLocation, /\/api\/auth\/paypal\/callback\?/);
+
+  const callback = await fetch(new URL(callbackLocation, base), { redirect: "manual" });
+  assert.equal(callback.status, 302);
+  const setCookie = callback.headers.get("set-cookie");
+  assert.ok(setCookie && setCookie.includes("paypilot_sid="));
+  const frontendRedirect = callback.headers.get("location");
+  assert.ok(frontendRedirect?.startsWith("http://localhost:3000/auth/callback"));
+
+  const cookieHeader = setCookie.split(";")[0]!;
+  const me = await fetch(`${base}/api/auth/me`, { headers: { Cookie: cookieHeader } });
+  assert.equal(me.status, 200);
+  const body = await me.json() as { email: string; paypalPayerId: string; userId: string };
+  assert.equal(body.email, "merchant@example.com");
+  assert.equal(body.paypalPayerId, "MOCKPAYERID001");
+  assert.ok(body.userId.startsWith("paypal:"));
+
+  const logout = await fetch(`${base}/api/auth/logout`, {
+    method: "POST",
+    headers: { Cookie: cookieHeader, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(logout.status, 200);
+  const meAfter = await fetch(`${base}/api/auth/me`, { headers: { Cookie: cookieHeader } });
+  assert.equal(meAfter.status, 401);
+});
+
+
+test("PayPal OAuth connect callback binds merchant identity", async (t) => {
+  process.env.PAYMENT_MODE = "mock";
+  process.env.FRONTEND_ORIGIN = "http://localhost:3000";
+  const service = new PayPilotService({
+    adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }),
+    seedDemoData: false,
+  });
+  assert.equal(service.connection().status, "disconnected");
+  const server = createApiServer({ service }).listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const start = await fetch(`${base}/api/connections/paypal/oauth/start`, { redirect: "manual" });
+  assert.equal(start.status, 302);
+  const callbackLocation = start.headers.get("location");
+  assert.ok(callbackLocation);
+
+  const callback = await fetch(new URL(callbackLocation, base), { redirect: "manual" });
+  assert.equal(callback.status, 302);
+  assert.ok(callback.headers.get("location")?.includes("paypal=connected"));
+
+  const connection = service.connection();
+  assert.equal(connection.status, "active");
+  assert.equal(connection.authMethod, "oauth");
+  assert.equal(connection.paypalPayerId, "MOCKPAYERID001");
+  assert.equal(connection.merchantEmail, "merchant@example.com");
+});
+
+test("invalid OAuth state is rejected", async (t) => {
+  process.env.PAYMENT_MODE = "mock";
+  const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
+  const server = createApiServer({ service }).listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const response = await fetch(`${base}/api/auth/paypal/callback?code=mock-login-local&state=not-a-real-state`, { redirect: "manual" });
+  assert.equal(response.status, 400);
+  const body = await response.json() as { error: string };
+  assert.match(body.error, /Invalid or expired OAuth state/);
+});
+
+test("mock POST connect remains available offline", async (t) => {
+  const service = new PayPilotService({
+    adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }),
+    seedDemoData: false,
+  });
+  const server = createApiServer({ service }).listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const connected = await request(base, "/api/connections/connect", {});
+  assert.equal(connected.status, 200);
+  assert.equal(connected.body.status, "active");
+  assert.equal(connected.body.authMethod, "credentials_probe");
+});
+
 test("role-scoped traces hide executor details and replay controls are deterministic", async (t) => {
   const service = new PayPilotService({ adapter: createPaymentAdapter({ env: { PAYMENT_MODE: "mock" } }) });
   const server = createApiServer({ service }).listen(0);

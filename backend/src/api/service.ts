@@ -194,22 +194,53 @@ export class PayPilotService {
     return this.onboardingState;
   }
 
-  public async connectPayPal(): Promise<ConnectionState> {
+  public async connectPayPal(options: {
+    readonly authMethod?: "oauth" | "credentials_probe";
+    readonly merchantEmail?: string;
+    readonly merchantName?: string;
+    readonly paypalPayerId?: string;
+    readonly scopes?: readonly string[];
+  } = {}): Promise<ConnectionState> {
+    if (options.authMethod !== "oauth" && this.adapter.mode !== "mock" && this.adapter.mode !== "replay") {
+      throw new Error("POST /api/connections/connect is mock-only; use PayPal OAuth connect in live mode");
+    }
     const verified = await this.adapter.verifyConnection();
+    const authMethod = options.authMethod ?? "credentials_probe";
     this.connectionState = {
       ...this.connectionState,
       status: "active",
-      scopes: ["transactions.read", "invoices.read", "payments.write"],
+      scopes: options.scopes ?? ["transactions.read", "invoices.read", "payments.write"],
       connectedAt: this.connectionState.connectedAt ?? NOW,
       lastSyncAt: NOW,
+      authMethod,
+      ...(options.merchantEmail === undefined ? {} : { merchantEmail: options.merchantEmail }),
+      ...(options.merchantName === undefined ? {} : { merchantName: options.merchantName }),
+      ...(options.paypalPayerId === undefined ? {} : { paypalPayerId: options.paypalPayerId }),
     };
     this.appendAudit("connection.connected", "accepted", "business", this.context.profile.id, {
       provider: "paypal",
       baseUrl: verified.baseUrl,
       paymentMode: this.adapter.mode,
+      authMethod,
+      ...(options.paypalPayerId === undefined ? {} : { paypalPayerId: options.paypalPayerId }),
     });
     this.emit("session.updated", this.session());
     return this.connectionState;
+  }
+
+  public async completePayPalConnect(identity: {
+    readonly email?: string;
+    readonly name?: string;
+    readonly paypalPayerId?: string;
+    readonly scopes?: readonly string[];
+  }): Promise<ConnectionState> {
+    return this.connectPayPal({
+      authMethod: "oauth",
+      ...(identity.email === undefined ? {} : { merchantEmail: identity.email }),
+      ...(identity.name === undefined ? {} : { merchantName: identity.name }),
+      ...(identity.paypalPayerId === undefined ? {} : { paypalPayerId: identity.paypalPayerId }),
+      ...(identity.scopes === undefined ? {} : { scopes: identity.scopes }),
+    });
   }
 
   public async ingestPayPalWebhook(
@@ -234,7 +265,12 @@ export class PayPilotService {
   }
 
   public disconnectPayPal(): LifecycleState {
-    this.connectionState = { ...this.connectionState, status: "disconnected" };
+    this.connectionState = {
+      id: "connection-paypal",
+      provider: "paypal",
+      status: "disconnected",
+      scopes: [],
+    };
     this.paused = true;
     for (const proposal of this.proposals.values()) {
       if (proposal.status === "proposed" || proposal.status === "approved") {
