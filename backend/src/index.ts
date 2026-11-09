@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import "./env.js";
 
 export * from "./domain/index.js";
@@ -5,7 +7,11 @@ export * from "./integrations/index.js";
 export * from "./api/index.js";
 export * from "./db/index.js";
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMain =
+  typeof process.argv[1] === "string" &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+
+if (isMain) {
   const port = Number(process.env.PORT ?? 8080);
   const { createApiServer } = await import("./api/server.js");
   const { paymentModeFromEnv } = await import("./api/payment-adapter.js");
