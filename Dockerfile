@@ -12,6 +12,7 @@ WORKDIR /app/backend
 ENV NODE_ENV=production PAYMENT_MODE=mock
 COPY --from=api-build /app/backend/package.json /app/backend/package-lock.json ./
 COPY --from=api-build /app/backend/dist ./dist
+RUN npm ci --omit=dev --ignore-scripts
 EXPOSE 8080
 CMD ["npm", "start"]
 
@@ -30,6 +31,8 @@ FROM node:20.17.0-bookworm-slim AS web
 WORKDIR /app/frontend
 ENV NODE_ENV=production
 COPY --from=web-build /app/frontend/package.json /app/frontend/package-lock.json ./
+COPY --from=web-build /app/frontend/next.config.ts ./
 COPY --from=web-build /app/frontend/.next ./.next
+RUN npm ci --omit=dev --ignore-scripts
 EXPOSE 3000
 CMD ["npm", "start"]
